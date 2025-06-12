@@ -34,6 +34,7 @@ public class StatisticsController {
         log.info("Получен запрос GET /stats");
         return ResponseEntity.ok(service.get(start, end, uris, unique));
     }
+
     @PostMapping("/hit")
     public ResponseEntity<EndHitDto> hit(@RequestBody EndHitDto endpointHit) {
         log.info("Получен запрос POST /hit");
