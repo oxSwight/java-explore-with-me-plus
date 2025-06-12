@@ -9,8 +9,8 @@ services:
       - stats-db
     environment:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://stats-db:5432/stats-db
-      - SPRING_DATASOURCE_USERNAME=stats
-      - SPRING_DATASOURCE_PASSWORD=stats
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=12345
 
   stats-db:
     image: postgres:16.1
