@@ -1,20 +1,20 @@
 package ru.practicum.dto;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.NoArgsConstructor;
-import lombok.Data;
+import com.fasterxml.jackson.annotation.JsonFormat;
+import lombok.*;
 
-@Data
+@Getter
+@Setter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class EndHitDto {
 
-    Long id;
-    String app;
-    String uri;
-    String ip;
-    String timestamp;
+    private Long   id;
+    private String app;
+    private String uri;
+    private String ip;
 
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private String timestamp;
 }
