@@ -1,11 +1,14 @@
 package ru.practicum.explore.category.mapper;
 
-import org.mapstruct.Mapper;
-import org.mapstruct.MappingConstants;
+import org.springframework.stereotype.Component;
 import ru.practicum.explore.category.dto.*;
 
-@Mapper(componentModel = MappingConstants.ComponentModel.SPRING)
-public interface CategoryMapper {
+@Component
+public class CategoryMapper {
 
-    CategoryDto toCategoryDto(NewCategoryDto src);
+    public CategoryDto toCategoryDto(NewCategoryDto src) {
+        CategoryDto dto = new CategoryDto();
+        dto.setName(src.getName());
+        return dto;
+    }
 }
