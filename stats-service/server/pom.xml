@@ -32,7 +32,7 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
-                    <mainClass>ru.practicum.StatsApplication</mainClass>
+                    <mainClass>ru.practicum.explore.StatsApplication</mainClass>
                     <layout>JAR</layout>
                 </configuration>
                 <executions>

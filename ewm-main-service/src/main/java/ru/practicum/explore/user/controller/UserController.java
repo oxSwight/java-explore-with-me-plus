@@ -6,7 +6,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import ru.practicum.explore.global.service.ExchangeService;
-import ru.practicum.explore.user.dto.*;
+import ru.practicum.explore.user.dto.ChangedStatusOfRequestsDto;
+import ru.practicum.explore.user.dto.RequestDto;
+import ru.practicum.explore.user.dto.ResponseInformationAboutRequests;
+import ru.practicum.explore.user.dto.UserDto;
 import ru.practicum.explore.user.service.UserService;
 
 import java.io.IOException;

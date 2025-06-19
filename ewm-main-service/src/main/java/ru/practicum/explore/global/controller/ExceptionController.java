@@ -1,63 +1,69 @@
 package ru.practicum.explore.global.controller;
 
-import jakarta.persistence.EntityNotFoundException;
-import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.coyote.BadRequestException;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.validation.method.MethodValidationException;
-import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.bind.annotation.RestControllerAdvice;
-import ru.practicum.explore.global.dto.ErrorMessage;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import ru.practicum.explore.common.exception.*;
+import ru.practicum.explore.common.dto.ApiError;
 
+import jakarta.validation.ConstraintViolationException;
+import java.time.LocalDateTime;
 import java.util.List;
 
-@RestControllerAdvice
 @Slf4j
+@RestControllerAdvice(basePackages = "ru.practicum")   // охватываем все контроллеры
 public class ExceptionController {
 
-    @ExceptionHandler(EntityNotFoundException.class)
-    public ResponseEntity<ErrorMessage> handleNotFound(final EntityNotFoundException e) {
-        log.warn("Encountered {}: returning 404 Error. Message: {}", e.getClass().getSimpleName(), e.getMessage());
-        ErrorMessage errorMessage = new ErrorMessage(List.of(e.getClass().getSimpleName(), "Entity not found in DB"), e.getLocalizedMessage(), "Entity not found in DB");
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).contentType(MediaType.APPLICATION_JSON).body(errorMessage);
+    /* ---------- 404 ---------- */
+    @ExceptionHandler(NotFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ApiError handleNotFound(NotFoundException ex) {
+        return build(HttpStatus.NOT_FOUND, "Сущность не найдена", ex);
     }
 
-    @ExceptionHandler(BadRequestException.class)
-    public ResponseEntity<ErrorMessage> handleBadRequest(final BadRequestException e) {
-        log.warn("Encountered {}: returning 400 Error. Message: {}", e.getClass().getSimpleName(), e.getMessage());
-        ErrorMessage errorMessage = new ErrorMessage(List.of(e.getClass().getSimpleName(), "Error in request"), e.getLocalizedMessage(), "Error in request");
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).contentType(MediaType.APPLICATION_JSON).body(errorMessage);
+    /* ---------- 400 ---------- */
+    @ExceptionHandler({
+            BadRequestException.class,
+            MethodArgumentTypeMismatchException.class,
+            ConstraintViolationException.class
+    })
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ApiError handleBadRequest(RuntimeException ex) {
+        return build(HttpStatus.BAD_REQUEST, "Некорректный запрос", ex);
     }
 
-    @ExceptionHandler(MethodValidationException.class)
-    public ResponseEntity<ErrorMessage> handleMethodValidationException(final MethodValidationException e) {
-        log.warn("Encountered {}: returning 400 Error. Message: {}", e.getClass().getSimpleName(), e.getMessage());
-        ErrorMessage errorMessage = new ErrorMessage(List.of(e.getClass().getSimpleName(), "Error in request"), e.getLocalizedMessage(), "Error in request");
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).contentType(MediaType.APPLICATION_JSON).body(errorMessage);
+    /* ---------- 403 ---------- */
+    @ExceptionHandler(ForbiddenException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    public ApiError handleForbidden(ForbiddenException ex) {
+        return build(HttpStatus.FORBIDDEN, "Доступ запрещён", ex);
     }
 
-    @ExceptionHandler(RuntimeException.class)
-    public ResponseEntity<ErrorMessage> handleInternalServerError(final RuntimeException e) {
-        log.warn("Encountered {}: returning 500 Error. Message: {}", e.getClass().getSimpleName(), e.getMessage());
-        ErrorMessage errorMessage = new ErrorMessage(List.of(e.getClass().getSimpleName(), "Error in request"), e.getLocalizedMessage(), "Error in request");
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).contentType(MediaType.APPLICATION_JSON).body(errorMessage);
+    /* ---------- 409 ---------- */
+    @ExceptionHandler(ConflictException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ApiError handleConflict(ConflictException ex) {
+        return build(HttpStatus.CONFLICT, "Конфликт данных", ex);
     }
 
-    @ExceptionHandler(ConstraintViolationException.class)
-    public ResponseEntity<ErrorMessage> handleConstraintViolationException(final ConstraintViolationException e) {
-        log.warn("Encountered {}: returning 400 Error. Message: {}", e.getClass().getSimpleName(), e.getMessage());
-        ErrorMessage errorMessage = new ErrorMessage(List.of(e.getClass().getSimpleName(), "Error in request"), e.getLocalizedMessage(), "Error in request");
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).contentType(MediaType.APPLICATION_JSON).body(errorMessage);
+    /* ---------- 500 ---------- */
+    @ExceptionHandler(Throwable.class)
+    @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+    public ApiError handleUnexpected(Throwable ex) {
+        log.error("Необработанная ошибка", ex);
+        return build(HttpStatus.INTERNAL_SERVER_ERROR, "Внутренняя ошибка сервера", ex);
     }
 
-    @ExceptionHandler(DataIntegrityViolationException.class)
-    public ResponseEntity<ErrorMessage> handleBadEntity(final DataIntegrityViolationException e) {
-        log.warn("Encountered {}: returning 409 Error. Message: {}", e.getClass().getSimpleName(), e.getMessage());
-        ErrorMessage errorMessage = new ErrorMessage(List.of(e.getClass().getSimpleName(), "Conflict: Data integrity violation exception"), e.getLocalizedMessage(), "Conflict: Data integrity violation exception");
-        return ResponseEntity.status(HttpStatus.CONFLICT).contentType(MediaType.APPLICATION_JSON).body(errorMessage);
+    /* ---------- helper ---------- */
+    private ApiError build(HttpStatus status, String reason, Throwable ex) {
+        return ApiError.builder()
+                .status(status)
+                .reason(reason)
+                .message(ex.getMessage())
+                .errors(List.of())
+                .timestamp(LocalDateTime.now())
+                .build();
     }
 }
