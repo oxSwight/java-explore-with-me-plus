@@ -1,18 +1,19 @@
 package ru.practicum.explore.global.controller;
 
+import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
-import ru.practicum.explore.common.exception.*;
 import ru.practicum.explore.common.dto.ApiError;
+import ru.practicum.explore.common.exception.*;
 
-import jakarta.validation.ConstraintViolationException;
 import java.time.LocalDateTime;
 import java.util.List;
 
 @Slf4j
-@RestControllerAdvice(basePackages = "ru.practicum")   // охватываем все контроллеры
+@RestControllerAdvice(basePackages = "ru.practicum")
 public class ExceptionController {
 
     /* ---------- 404 ---------- */
@@ -25,12 +26,13 @@ public class ExceptionController {
     /* ---------- 400 ---------- */
     @ExceptionHandler({
             BadRequestException.class,
-            MethodArgumentTypeMismatchException.class,
-            ConstraintViolationException.class
+            ConstraintViolationException.class,
+            MethodArgumentNotValidException.class,
+            MethodArgumentTypeMismatchException.class
     })
     @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public ApiError handleBadRequest(RuntimeException ex) {
-        return build(HttpStatus.BAD_REQUEST, "Некорректный запрос", ex);
+    public ApiError handleBadRequest(Exception ex) {
+        return build(HttpStatus.BAD_REQUEST, "Некорректные данные", ex);
     }
 
     /* ---------- 403 ---------- */

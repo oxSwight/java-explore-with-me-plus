@@ -4,110 +4,158 @@ import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 import ru.practicum.explore.category.dto.CategoryDtoWithId;
 import ru.practicum.explore.category.model.Category;
-import ru.practicum.explore.event.dto.EventDto;
-import ru.practicum.explore.event.dto.LocationDto;
-import ru.practicum.explore.event.dto.PatchEventDto;
-import ru.practicum.explore.event.dto.ResponseEventDto;
+import ru.practicum.explore.event.dto.*;
 import ru.practicum.explore.event.model.Event;
+import ru.practicum.explore.event.model.EventState;
 import ru.practicum.explore.event.model.Location;
 import ru.practicum.explore.user.dto.UserDtoWithNoEmail;
 import ru.practicum.explore.user.model.User;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
-public class EventMapperNew {
+public final class EventMapperNew {
+
+    /* ---------- helpers для вложенных сущностей ---------- */
+
     public static CategoryDtoWithId mapToCategoryDtoWithId(Category category) {
-        CategoryDtoWithId categoryDtoWithId = new CategoryDtoWithId();
-        categoryDtoWithId.setId(category.getId());
-        categoryDtoWithId.setName(category.getName());
-        return categoryDtoWithId;
+        CategoryDtoWithId dto = new CategoryDtoWithId();
+        dto.setId(category.getId());
+        dto.setName(category.getName());
+        return dto;
     }
 
     public static UserDtoWithNoEmail mapToUserDtoWithNoEmail(User user) {
-        UserDtoWithNoEmail userDtoWithNoEmail = new UserDtoWithNoEmail();
-        userDtoWithNoEmail.setId(user.getId());
-        userDtoWithNoEmail.setName(user.getName());
-        return userDtoWithNoEmail;
+        UserDtoWithNoEmail dto = new UserDtoWithNoEmail();
+        dto.setId(user.getId());
+        dto.setName(user.getName());
+        return dto;
     }
 
     public static LocationDto mapToLocationDto(Location location) {
-        LocationDto locationDto = new LocationDto();
-        locationDto.setLat(location.getLat());
-        locationDto.setLon(location.getLon());
-        return locationDto;
+        LocationDto dto = new LocationDto();
+        dto.setLat(location.getLat());
+        dto.setLon(location.getLon());
+        return dto;
     }
 
-    public static Location mapToLocation(LocationDto locationDto) {
+    public static Location mapToLocation(LocationDto dto) {
         Location location = new Location();
-        location.setLat(locationDto.getLat());
-        location.setLon(locationDto.getLon());
+        location.setLat(dto.getLat());
+        location.setLon(dto.getLon());
         return location;
     }
 
     public static EventDto mapToEventDto(Event event) {
-        EventDto eventDto = new EventDto();
-        eventDto.setAnnotation(event.getAnnotation());
-        eventDto.setId(event.getId());
-        eventDto.setCategory(mapToCategoryDtoWithId(event.getCategory()));
-        eventDto.setEventDate(event.getEventDate());
-        eventDto.setInitiator(mapToUserDtoWithNoEmail(event.getInitiator()));
-        eventDto.setPaid(event.getPaid());
-        eventDto.setTitle(event.getTitle());
-        eventDto.setConfirmedRequests(event.getConfirmedRequests());
-        eventDto.setViews(event.getViews());
-        eventDto.setDescription(event.getDescription());
-        eventDto.setLocation(mapToLocationDto(event.getLocation()));
-        eventDto.setParticipantLimit(event.getParticipantLimit());
-        eventDto.setRequestModeration(event.getRequestModeration());
-        eventDto.setCreatedOn(event.getCreatedOn());
-        eventDto.setPublishedOn(event.getPublishedOn());
-        eventDto.setState(event.getState());
-        return eventDto;
+        EventDto dto = new EventDto();
+        dto.setAnnotation(event.getAnnotation());
+        dto.setId(event.getId());
+        dto.setCategory(mapToCategoryDtoWithId(event.getCategory()));
+        dto.setEventDate(event.getEventDate());
+        dto.setInitiator(mapToUserDtoWithNoEmail(event.getInitiator()));
+        dto.setPaid(event.getPaid());
+        dto.setTitle(event.getTitle());
+        dto.setConfirmedRequests(event.getConfirmedRequests());
+        dto.setViews(event.getViews());
+        dto.setDescription(event.getDescription());
+        dto.setLocation(mapToLocationDto(event.getLocation()));
+        dto.setParticipantLimit(event.getParticipantLimit());
+        dto.setRequestModeration(event.getRequestModeration());
+        dto.setCreatedOn(event.getCreatedOn());
+        dto.setPublishedOn(event.getPublishedOn());
+        dto.setState(event.getState());
+        return dto;
     }
 
     public static List<EventDto> mapToEventDto(Iterable<Event> events) {
-        List<EventDto> result = new ArrayList<>();
-        for (Event event : events) {
-            result.add(mapToEventDto(event));
-        }
-        return result;
-    }
-
-    public static List<ResponseEventDto> mapToResponseEventDto(Iterable<Event> events) {
-        List<ResponseEventDto> result = new ArrayList<>();
-        for (Event event : events) {
-            result.add(mapToResponseEventDto(event));
-        }
-        return result;
+        List<EventDto> res = new ArrayList<>();
+        for (Event e : events) res.add(mapToEventDto(e));
+        return res;
     }
 
     public static ResponseEventDto mapToResponseEventDto(Event event) {
-        ResponseEventDto eventDto = new ResponseEventDto();
-        eventDto.setAnnotation(event.getAnnotation());
-        eventDto.setId(event.getId());
-        eventDto.setCategory(mapToCategoryDtoWithId(event.getCategory()));
-        eventDto.setEventDate(event.getEventDate());
-        eventDto.setInitiator(mapToUserDtoWithNoEmail(event.getInitiator()));
-        eventDto.setPaid(event.getPaid());
-        eventDto.setTitle(event.getTitle());
-        eventDto.setConfirmedRequests(event.getConfirmedRequests());
-        eventDto.setViews(event.getViews());
-        return eventDto;
+        ResponseEventDto dto = new ResponseEventDto();
+        dto.setAnnotation(event.getAnnotation());
+        dto.setId(event.getId());
+        dto.setCategory(mapToCategoryDtoWithId(event.getCategory()));
+        dto.setEventDate(event.getEventDate());
+        dto.setInitiator(mapToUserDtoWithNoEmail(event.getInitiator()));
+        dto.setPaid(event.getPaid());
+        dto.setTitle(event.getTitle());
+        dto.setConfirmedRequests(event.getConfirmedRequests());
+        dto.setViews(event.getViews());
+        return dto;
     }
 
-    public static Event changeEvent(Event event, PatchEventDto patchEventDto) {
-        if (patchEventDto.getAnnotation() != null) event.setAnnotation(patchEventDto.getAnnotation());
-        if (patchEventDto.getDescription() != null) event.setDescription(patchEventDto.getDescription());
-        if (patchEventDto.getEventDate() != null) event.setEventDate(patchEventDto.getEventDate());
-        if (patchEventDto.getPaid() != null) event.setPaid(patchEventDto.getPaid());
-        if (patchEventDto.getParticipantLimit() != null && patchEventDto.getParticipantLimit() >= 0)
-            event.setParticipantLimit(patchEventDto.getParticipantLimit());
-        if (patchEventDto.getRequestModeration() != null)
-            event.setRequestModeration(patchEventDto.getRequestModeration());
-        if (patchEventDto.getStateAction() != null) event.setState(patchEventDto.getStateAction());
-        if (patchEventDto.getTitle() != null) event.setTitle(patchEventDto.getTitle());
+    public static List<ResponseEventDto> mapToResponseEventDto(Iterable<Event> events) {
+        List<ResponseEventDto> res = new ArrayList<>();
+        for (Event e : events) res.add(mapToResponseEventDto(e));
+        return res;
+    }
+
+    public static Event toEntity(NewEventDto dto,
+                                 User initiator,
+                                 Category category,
+                                 Location location) {
+
+        Event e = new Event();
+        e.setTitle(dto.getTitle());
+        e.setAnnotation(dto.getAnnotation());
+        e.setDescription(dto.getDescription());
+        e.setEventDate(dto.getEventDate());
+        e.setCategory(category);
+        e.setInitiator(initiator);
+        e.setLocation(location);
+
+        e.setPaid(dto.getPaid() != null && dto.getPaid());
+        e.setParticipantLimit(dto.getParticipantLimit() != null ? dto.getParticipantLimit() : 0);
+        e.setRequestModeration(dto.getRequestModeration() == null || dto.getRequestModeration());
+
+        e.setState(String.valueOf(EventState.PENDING));
+        e.setCreatedOn(LocalDateTime.now());
+        e.setViews(0L);
+        e.setConfirmedRequests(0L);
+
+        return e;
+    }
+
+    /* ---------- entity → полный dto ---------- */
+
+    public static EventFullDto toFullDto(Event e) {
+        return EventFullDto.builder()
+                .id(e.getId())
+                .title(e.getTitle())
+                .annotation(e.getAnnotation())
+                .description(e.getDescription())
+                .category(mapToCategoryDtoWithId(e.getCategory()))
+                .paid(e.getPaid())
+                .eventDate(e.getEventDate())
+                .initiator(mapToUserDtoWithNoEmail(e.getInitiator()))
+                .views(e.getViews())
+                .confirmedRequests(e.getConfirmedRequests())
+                .participantLimit(e.getParticipantLimit())
+                .requestModeration(e.getRequestModeration())
+                .state(EventState.valueOf(e.getState()))
+                .createdOn(e.getCreatedOn())
+                .publishedOn(e.getPublishedOn())
+                .location(mapToLocationDto(e.getLocation()))
+                .build();
+    }
+
+    /* ---------- patch helper ---------- */
+
+    public static Event changeEvent(Event event, PatchEventDto patch) {
+        if (patch.getAnnotation() != null)          event.setAnnotation(patch.getAnnotation());
+        if (patch.getDescription() != null)         event.setDescription(patch.getDescription());
+        if (patch.getEventDate() != null)           event.setEventDate(patch.getEventDate());
+        if (patch.getPaid() != null)                event.setPaid(patch.getPaid());
+        if (patch.getParticipantLimit() != null &&
+                patch.getParticipantLimit() >= 0)       event.setParticipantLimit(patch.getParticipantLimit());
+        if (patch.getRequestModeration() != null)   event.setRequestModeration(patch.getRequestModeration());
+        if (patch.getStateAction() != null)         event.setState(patch.getStateAction());
+        if (patch.getTitle() != null)               event.setTitle(patch.getTitle());
         return event;
     }
 }

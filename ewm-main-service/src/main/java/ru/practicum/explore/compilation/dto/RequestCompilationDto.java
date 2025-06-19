@@ -1,16 +1,19 @@
 package ru.practicum.explore.compilation.dto;
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import jakarta.validation.constraints.Size;
+import lombok.Getter;
+import lombok.Setter;
 
-import java.util.List;
+import java.util.Set;
 
-@Data
-@AllArgsConstructor
-@NoArgsConstructor
+@Getter
+@Setter
 public class RequestCompilationDto {
+
+    @Size(max = 50)
     private String title;
+
     private Boolean pinned;
-    private List<Long> events;
+
+    private Set<Long> events;
 }
