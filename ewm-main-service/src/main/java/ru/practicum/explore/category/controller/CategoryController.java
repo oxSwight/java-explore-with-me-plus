@@ -15,7 +15,7 @@ import java.net.URI;
 import java.util.Collection;
 
 @RestController
-@RequestMapping
+@RequestMapping("/categories")
 @Slf4j
 @RequiredArgsConstructor
 public class CategoryController {
