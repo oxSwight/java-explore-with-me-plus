@@ -25,7 +25,7 @@ public class NewEventDto {
     @Future
     private LocalDateTime eventDate;
 
-    @Positive(message = "categoryId must be positive")
+    @Positive
     private Long category;
 
     @PositiveOrZero

@@ -9,7 +9,10 @@ import java.util.Collection;
 import java.util.List;
 
 public interface EventService {
+
     EventDto getEventById(long userId, long eventId);
+
+    EventDto getPublishedEventById(long eventId);
 
     Collection<ResponseEventDto> getAllUserEvents(long userId, Integer from, Integer size);
 

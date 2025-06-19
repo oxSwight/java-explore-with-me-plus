@@ -9,11 +9,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.practicum.explore.category.model.Category;
 import ru.practicum.explore.category.repository.CategoryRepository;
+import ru.practicum.explore.common.exception.NotFoundException;
 import ru.practicum.explore.event.dto.EventDto;
 import ru.practicum.explore.event.dto.PatchEventDto;
 import ru.practicum.explore.event.dto.ResponseEventDto;
 import ru.practicum.explore.event.mapper.EventMapperNew;
 import ru.practicum.explore.event.model.Event;
+import ru.practicum.explore.event.model.EventState;
 import ru.practicum.explore.event.model.Location;
 import ru.practicum.explore.global.dto.SortValues;
 import ru.practicum.explore.global.dto.Statuses;
@@ -38,9 +40,17 @@ public class EventServiceImpl implements EventService {
 
     @Override
     public EventDto getEventById(long userId, long eventId) {
-        Optional<Event> event = eventRepository.findByIdAndInitiatorId(eventId, userId);
-        if (event.isPresent()) return EventMapperNew.mapToEventDto(event.get());
-        else throw new EntityNotFoundException();
+        return eventRepository.findByIdAndInitiatorId(eventId, userId)
+                .map(EventMapperNew::mapToEventDto)
+                .orElseThrow(() -> new NotFoundException("Event id=" + eventId + " not found for user " + userId));
+    }
+
+    /* ---------- новая перегрузка для публичного эндпоинта ---------- */
+    @Override
+    public EventDto getPublishedEventById(long eventId) {
+        Event event = eventRepository.findByIdAndState(eventId, String.valueOf(EventState.PUBLISHED))
+                .orElseThrow(() -> new NotFoundException("Published event id=" + eventId + " not found"));
+        return EventMapperNew.mapToEventDto(event);
     }
 
     @Override
