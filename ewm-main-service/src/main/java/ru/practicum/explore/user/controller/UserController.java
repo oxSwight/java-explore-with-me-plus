@@ -1,15 +1,15 @@
 package ru.practicum.explore.user.controller;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import ru.practicum.explore.global.service.ExchangeService;
-import ru.practicum.explore.user.dto.ChangedStatusOfRequestsDto;
-import ru.practicum.explore.user.dto.RequestDto;
-import ru.practicum.explore.user.dto.ResponseInformationAboutRequests;
-import ru.practicum.explore.user.dto.UserDto;
+import ru.practicum.explore.user.dto.*;
 import ru.practicum.explore.user.service.UserService;
 
 import java.io.IOException;
@@ -17,66 +17,85 @@ import java.net.URI;
 import java.util.Collection;
 import java.util.List;
 
+@Validated
 @RestController
 @RequestMapping
-@Slf4j
 @RequiredArgsConstructor
+@Slf4j
 public class UserController {
 
     private final UserService userService;
 
-    @GetMapping("/users/{userId}/requests")
-    public ResponseEntity<Collection<RequestDto>> getRequsets(@PathVariable long userId) {
-        log.info("Request to get requests of user with ID {} received.", userId);
-        return ResponseEntity.ok().body(userService.getUserRequests(userId));
-    }
+    @PostMapping("/users/{userId}/requests")
+    public ResponseEntity<RequestDto> createRequest(@PathVariable @Positive long userId,
+                                                    @RequestParam @Positive long eventId) {
+        log.info("POST /users/{}/requests?eventId={}", userId, eventId);
+        RequestDto dto = userService.createRequest(userId, eventId);
 
-    @GetMapping("/users/{userId}/events/{eventId}/requests")
-    public ResponseEntity<Collection<RequestDto>> getEventRequsets(@PathVariable long userId, @PathVariable long eventId) {
-        log.info("Request to get requests of the event with ID {} received.", userId);
-        return ResponseEntity.ok().body(userService.getEventRequests(userId, eventId));
-    }
-
-    @GetMapping("/admin/users")
-    public ResponseEntity<Collection<UserDto>> getUsers(@RequestParam(required = false) List<Long> ids, @RequestParam(defaultValue = "0") Integer from, @RequestParam(defaultValue = "10") Integer size) {
-        log.info("Request to get users received.");
-        return ResponseEntity.ok().body(userService.getAllUsers(ids, from, size));
+        URI location = ServletUriComponentsBuilder
+                .fromCurrentRequest().path("/{id}")
+                .buildAndExpand(dto.getId()).toUri();
+        return ResponseEntity.created(location).body(dto);
     }
 
     @PatchMapping("/users/{userId}/requests/{requestId}/cancel")
-    public ResponseEntity<RequestDto> cancelRequest(@PathVariable long userId, @PathVariable long requestId) {
-        log.info("Request to cancel request {} of user with ID {} received.", requestId, userId);
-        return ResponseEntity.ok().body(userService.cancelRequest(userId, requestId));
+    public ResponseEntity<RequestDto> cancelRequest(@PathVariable @Positive long userId,
+                                                    @PathVariable @Positive long requestId) {
+        log.info("PATCH cancel request {} by user {}", requestId, userId);
+        return ResponseEntity.ok(userService.cancelRequest(userId, requestId));
+    }
+
+    @GetMapping("/users/{userId}/requests")
+    public ResponseEntity<Collection<RequestDto>> getUserRequests(@PathVariable @Positive long userId) {
+        log.info("GET all requests of user {}", userId);
+        return ResponseEntity.ok(userService.getUserRequests(userId));
+    }
+
+    @GetMapping("/users/{userId}/events/{eventId}/requests")
+    public ResponseEntity<Collection<RequestDto>> getEventRequests(@PathVariable @Positive long userId,
+                                                                   @PathVariable @Positive long eventId) {
+        log.info("GET requests for event {} by initiator {}", eventId, userId);
+        return ResponseEntity.ok(userService.getEventRequests(userId, eventId));
     }
 
     @PatchMapping("/users/{userId}/events/{eventId}/requests")
-    public ResponseEntity<ResponseInformationAboutRequests> changeRequestsStatuses(@PathVariable long userId, @PathVariable long eventId, @RequestBody ChangedStatusOfRequestsDto changedStatusOfRequestsDto) {
-        log.info("Request to change requests of user with ID {} received.", userId);
-        return ResponseEntity.ok().body(userService.changeRequestsStatuses(userId, eventId, changedStatusOfRequestsDto));
+    public ResponseEntity<ResponseInformationAboutRequests> changeRequestsStatuses(
+            @PathVariable @Positive long userId,
+            @PathVariable @Positive long eventId,
+            @RequestBody @Valid ChangedStatusOfRequestsDto dto) {
+
+        log.info("PATCH change status of requests for event {} by user {}", eventId, userId);
+        return ResponseEntity.ok(userService.changeRequestsStatuses(userId, eventId, dto));
     }
 
-    @DeleteMapping("/admin/users/{userId}")
-    public ResponseEntity<Void> deleteUser(@PathVariable long userId) {
-        log.info("Request to delete user with ID {} received.", userId);
-        userService.deleteUser(userId);
-        return ResponseEntity.noContent().build();
-    }
+    @GetMapping("/admin/users")
+    public ResponseEntity<Collection<UserDto>> getUsers(
+            @RequestParam(required = false) List<Long> ids,
+            @RequestParam(defaultValue = "0") @Positive int from,
+            @RequestParam(defaultValue = "10") @Positive int size) {
 
-    @PostMapping("/users/{userId}/requests")
-    public ResponseEntity<RequestDto> createRequest(@PathVariable long userId, @RequestParam(defaultValue = "0") long eventId) {
-        log.info("Request to create new request from user with ID received: {}", userId);
-        RequestDto request = userService.createRequest(userId, eventId);
-        URI location = ServletUriComponentsBuilder.fromCurrentRequest().path("/{id}").buildAndExpand(request.getId()).toUri();
-        log.info("New request created with ID {}", request.getId());
-        return ResponseEntity.created(location).body(request);
+        log.info("GET /admin/users – ids={}, from={}, size={}", ids, from, size);
+        return ResponseEntity.ok(userService.getAllUsers(ids, from, size));
     }
 
     @PostMapping("/admin/users")
-    public ResponseEntity<UserDto> createUser(@RequestBody UserDto userDto) throws IOException {
-        log.info("Request to create new user received: {}", userDto);
-        UserDto user = userService.createUser(userDto);
-        URI location = ServletUriComponentsBuilder.fromCurrentRequest().path("/{id}").buildAndExpand(user.getId()).toUri();
-        log.info("New user created with ID {}", user.getId());
-        return ResponseEntity.created(location).headers(ExchangeService.exchange(user)).body(user);
+    public ResponseEntity<UserDto> createUser(@RequestBody @Valid UserDto userDto) throws IOException {
+        log.info("POST /admin/users – body={}", userDto);
+        UserDto saved = userService.createUser(userDto);
+
+        URI location = ServletUriComponentsBuilder
+                .fromCurrentRequest().path("/{id}")
+                .buildAndExpand(saved.getId()).toUri();
+
+        return ResponseEntity.created(location)
+                .headers(ExchangeService.exchange(saved))
+                .body(saved);
+    }
+
+    @DeleteMapping("/admin/users/{userId}")
+    public ResponseEntity<Void> deleteUser(@PathVariable @Positive long userId) {
+        log.info("DELETE /admin/users/{}", userId);
+        userService.deleteUser(userId);
+        return ResponseEntity.noContent().build();
     }
 }

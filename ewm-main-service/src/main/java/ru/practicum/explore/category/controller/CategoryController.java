@@ -1,39 +1,61 @@
 package ru.practicum.explore.category.controller;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
+import ru.practicum.explore.category.dto.CategoryDto;
 import ru.practicum.explore.category.dto.CategoryDtoWithId;
 import ru.practicum.explore.category.service.CategoryService;
 
+import java.net.URI;
 import java.util.Collection;
 
 @Validated
+@Slf4j
 @RestController
 @RequestMapping("/categories")
 @RequiredArgsConstructor
-@Slf4j
 public class CategoryController {
 
-    private final CategoryService categoryService;
+    private final CategoryService service;
 
-    /** GET / categories/{catId} */
-    @GetMapping("/{catId}")
-    public CategoryDtoWithId getCategory(@PathVariable @Positive long catId) {
-        log.info("GET /categories/{}", catId);
-        return categoryService.getCategory(catId);
-    }
-
-    /** GET / categories?from=0&size=10 */
     @GetMapping
-    public Collection<CategoryDtoWithId> getAllCategories(
+    public Collection<CategoryDtoWithId> getAll(
             @RequestParam(defaultValue = "0")  @PositiveOrZero Integer from,
             @RequestParam(defaultValue = "10") @Positive       Integer size) {
 
-        log.info("GET /categories  from={} size={}", from, size);
-        return categoryService.getAllCategories(from, size);
+        return service.getAllCategories(from, size);
+    }
+
+    @GetMapping("/{catId}")
+    public CategoryDtoWithId getById(@PathVariable @Positive Long catId) {
+        return service.getCategory(catId);
+    }
+
+    @PostMapping("/admin")
+    public ResponseEntity<CategoryDtoWithId> add(@RequestBody @Valid CategoryDto dto) {
+        CategoryDtoWithId saved = service.createCategory(dto);
+        URI location = ServletUriComponentsBuilder
+                .fromCurrentRequest().path("/{id}")
+                .buildAndExpand(saved.getId()).toUri();
+        return ResponseEntity.created(location).body(saved);
+    }
+
+    @PatchMapping("/admin/{catId}")
+    public CategoryDtoWithId update(@PathVariable @Positive Long catId,
+                                    @RequestBody @Valid CategoryDto dto) {
+        return service.changeCategory(catId, dto);
+    }
+
+    @DeleteMapping("/admin/{catId}")
+    public ResponseEntity<Void> delete(@PathVariable @Positive Long catId) {
+        service.deleteCategory(catId);
+        return ResponseEntity.noContent().build();
     }
 }

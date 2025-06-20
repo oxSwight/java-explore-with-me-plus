@@ -2,20 +2,19 @@ package ru.practicum.explore.compilation.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.Data;
 
-import java.util.Set;
+import java.util.ArrayList;
+import java.util.List;
 
-@Getter
-@Setter
+@Data
 public class RequestCompilationDto {
 
     @NotBlank
-    @Size(min = 1, max = 50)
+    @Size(max = 50)
     private String title;
 
     private Boolean pinned = false;
 
-    private Set<Long> events;
+    private List<Long> events = new ArrayList<>();
 }

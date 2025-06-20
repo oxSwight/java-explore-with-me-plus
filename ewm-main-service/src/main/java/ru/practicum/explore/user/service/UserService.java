@@ -1,9 +1,8 @@
 package ru.practicum.explore.user.service;
 
-import ru.practicum.explore.user.dto.ChangedStatusOfRequestsDto;
-import ru.practicum.explore.user.dto.RequestDto;
-import ru.practicum.explore.user.dto.ResponseInformationAboutRequests;
-import ru.practicum.explore.user.dto.UserDto;
+import jakarta.validation.Valid;
+import org.springframework.transaction.annotation.Transactional;
+import ru.practicum.explore.user.dto.*;
 
 import java.util.Collection;
 import java.util.List;
@@ -19,7 +18,10 @@ public interface UserService {
 
     RequestDto createRequest(long userId, long eventId);
 
-    UserDto createUser(UserDto userDto);
+    @Transactional
+    UserDto createUser(@Valid UserDto dto);
+
+    UserDto createUser(@Valid NewUserDto userDto);
 
     Collection<RequestDto> getEventRequests(long userId, long eventId);
 

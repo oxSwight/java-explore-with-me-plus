@@ -1,6 +1,7 @@
 package ru.practicum.explore.user.service;
 
 import jakarta.persistence.EntityNotFoundException;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -10,15 +11,13 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.practicum.explore.event.model.Event;
 import ru.practicum.explore.event.repository.EventRepository;
 import ru.practicum.explore.global.dto.Statuses;
-import ru.practicum.explore.user.dto.ChangedStatusOfRequestsDto;
-import ru.practicum.explore.user.dto.RequestDto;
-import ru.practicum.explore.user.dto.ResponseInformationAboutRequests;
-import ru.practicum.explore.user.dto.UserDto;
+import ru.practicum.explore.user.dto.*;
 import ru.practicum.explore.user.mapper.UserMapperNew;
 import ru.practicum.explore.user.model.Request;
 import ru.practicum.explore.user.model.User;
 import ru.practicum.explore.user.repository.RequestRepository;
 import ru.practicum.explore.user.repository.UserRepository;
+import ru.practicum.explore.user.dto.NewUserDto;
 
 import java.util.*;
 
@@ -34,111 +33,165 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public Collection<RequestDto> getUserRequests(long userId) {
-        Optional<User> user = userRepository.findById(userId);
-        if (user.isPresent())
-            return UserMapperNew.mapToRequestDto(requestRepository.findByRequesterIdOrderByCreatedDateDesc(userId));
-        else throw new EntityNotFoundException();
+        userRepository.findById(userId)
+                .orElseThrow(EntityNotFoundException::new);
+        return UserMapperNew.mapToRequestDto(
+                requestRepository.findByRequesterIdOrderByCreatedDateDesc(userId));
     }
 
     @Override
     public Collection<UserDto> getAllUsers(List<Long> ids, Integer from, Integer size) {
         PageRequest page = PageRequest.of(from > 0 ? from / size : 0, size);
-        if (ids.equals(List.of(0L))) return UserMapperNew.mapToUserDto(userRepository.findAll(page));
-        else {
-            return new ArrayList<>(UserMapperNew.mapToUserDto(userRepository.findAllById(ids)));
+        if (ids == null || ids.isEmpty()) {
+            return UserMapperNew.mapToUserDto(userRepository.findAll(page));
         }
+        return UserMapperNew.mapToUserDto(userRepository.findAllById(ids));
     }
 
     @Override
     @Transactional
     public RequestDto cancelRequest(long userId, long requestId) {
-        Optional<User> user = userRepository.findById(userId);
-        if (user.isPresent()) {
-            Optional<Request> request = requestRepository.findById(requestId);
-            if (request.isPresent()) {
-                Request canceledRequest = request.get();
-                canceledRequest.setStatus(Statuses.CANCELED.name());
-                return UserMapperNew.mapToRequestDto(requestRepository.saveAndFlush(canceledRequest));
-            } else throw new EntityNotFoundException();
-        } else throw new EntityNotFoundException();
+        userRepository.findById(userId)
+                .orElseThrow(EntityNotFoundException::new);
+
+        Request request = requestRepository.findById(requestId)
+                .orElseThrow(EntityNotFoundException::new);
+
+        request.setStatus(Statuses.CANCELED.name());
+        return UserMapperNew.mapToRequestDto(requestRepository.saveAndFlush(request));
     }
 
     @Override
     @Transactional
     public void deleteUser(long userId) {
-        Optional<User> user = userRepository.findById(userId);
-        if (user.isPresent()) userRepository.deleteById(userId);
-        else throw new EntityNotFoundException();
+        if (!userRepository.existsById(userId)) {
+            throw new EntityNotFoundException();
+        }
+        userRepository.deleteById(userId);
     }
 
     @Override
     @Transactional
     public RequestDto createRequest(long userId, long eventId) {
-        Request request = new Request();
-        Optional<Event> event = eventRepository.findById(eventId);
-        Optional<User> user = userRepository.findById(userId);
-        Optional<Request> request1 = requestRepository.findByRequesterIdAndEventId(userId, eventId);
-        if (request1.isPresent() || (event.isPresent() && event.get().getInitiator().getId().equals(userId)) || (event.isPresent() && !event.get().getState().equals(Statuses.PUBLISHED.name())) || (event.isPresent() && Long.valueOf(event.get().getParticipantLimit()).equals(event.get().getConfirmedRequests()) && !event.get().getParticipantLimit().equals(0)))
-            throw new DataIntegrityViolationException("Data integrity violation exception");
-        if (event.isPresent() && event.get().getInitiator().getId() != userId && user.isPresent()) {
-            Event event1;
-            request.setEventId(event.get().getId());
-            request.setRequesterId(user.get().getId());
-            if (!event.get().getRequestModeration() || event.get().getParticipantLimit().equals(0)) {
-                request.setStatus(Statuses.CONFIRMED.name());
-                event1 = event.get();
-                event1.setConfirmedRequests(event1.getConfirmedRequests() + 1L);
-                eventRepository.save(event1);
-            } else request.setStatus(Statuses.PENDING.name());
-            return UserMapperNew.mapToRequestDto(requestRepository.save(request));
-        } else throw new EntityNotFoundException();
+
+        Event event = eventRepository.findById(eventId)
+                .orElseThrow(EntityNotFoundException::new);
+        userRepository.findById(userId)
+                .orElseThrow(EntityNotFoundException::new);
+
+        // уже есть заявка?
+        if (requestRepository.findByRequesterIdAndEventId(userId, eventId).isPresent()) {
+            throw new DataIntegrityViolationException("Повторная заявка запрещена");
+        }
+        // инициатор события?
+        if (Objects.equals(event.getInitiator().getId(), userId)) {
+            throw new DataIntegrityViolationException("Инициатор не может отправлять заявку на своё событие");
+        }
+        // событие не опубликовано?
+        if (!Statuses.PUBLISHED.name().equals(event.getState())) {
+            throw new DataIntegrityViolationException("Событие ещё не опубликовано");
+        }
+        // лимит достигнут?
+        long limit = event.getParticipantLimit();          // int → long
+        if (limit != 0 && event.getConfirmedRequests() >= limit) {
+            throw new DataIntegrityViolationException("Лимит заявок достигнут");
+        }
+
+        /* формируем заявку */
+        Request req = new Request();
+        req.setEventId(eventId);
+        req.setRequesterId(userId);
+
+        if (!event.getRequestModeration() || limit == 0) {
+            req.setStatus(Statuses.CONFIRMED.name());
+            event.setConfirmedRequests(event.getConfirmedRequests() + 1);
+            eventRepository.save(event);
+        } else {
+            req.setStatus(Statuses.PENDING.name());
+        }
+
+        return UserMapperNew.mapToRequestDto(requestRepository.save(req));
     }
 
     @Override
     @Transactional
-    public UserDto createUser(UserDto userDto) {
-        Optional<User> email = userRepository.findByEmail(userDto.getEmail());
-        if (email.isPresent()) throw new DataIntegrityViolationException("Data integrity violation exception");
-        User user = userRepository.save(UserMapperNew.mapToUser(userDto));
-        return UserMapperNew.mapToUserDto(user);
+    public UserDto createUser(@Valid UserDto dto) {
+        if (userRepository.findByEmail(dto.getEmail()).isPresent()) {
+            throw new DataIntegrityViolationException("E-mail уже используется");
+        }
+        User saved = userRepository.save(UserMapperNew.mapToUser(dto));
+        return UserMapperNew.mapToUserDto(saved);
+    }
+
+    @Override
+    @Transactional
+    public UserDto createUser(@Valid NewUserDto dto) {
+
+        /* проверка уникальности email */
+        if (userRepository.findByEmail(dto.getEmail()).isPresent()) {
+            throw new DataIntegrityViolationException("E-mail уже используется");
+        }
+
+        /* маппинг + сохранение */
+        User saved = userRepository.save(UserMapperNew.mapToUser(dto));
+        return UserMapperNew.mapToUserDto(saved);
     }
 
     @Override
     public Collection<RequestDto> getEventRequests(long userId, long eventId) {
-        return UserMapperNew.mapToRequestDto(requestRepository.findByEventId(eventId).get());
+        // проверяем, что событие принадлежит пользователю (можно расширить логику при необходимости)
+        eventRepository.findByIdAndInitiatorId(eventId, userId)
+                .orElseThrow(EntityNotFoundException::new);
+        return UserMapperNew.mapToRequestDto(
+                requestRepository.findByEventId(eventId).orElse(List.of()));
     }
 
     @Override
     @Transactional
-    public ResponseInformationAboutRequests changeRequestsStatuses(long userId, long eventId, ChangedStatusOfRequestsDto changedStatusOfRequestsDto) {
-        Optional<Event> event = eventRepository.findByIdAndInitiatorId(eventId, userId);
-        if (event.isPresent()) {
-            Event event1 = event.get();
-            Long limit = Long.valueOf(event.get().getParticipantLimit());
-            Long iterable = event.get().getConfirmedRequests();
-            Collection<Request> requests = requestRepository.findByIdInAndEventId(changedStatusOfRequestsDto.getRequestIds(), eventId);
-            if (!requests.isEmpty()) {
-                for (Request request : requests) {
-                    if (limit - iterable == 0L)
-                        throw new DataIntegrityViolationException("Data integrity violation exception");
-                    if (request.getStatus().equals(Statuses.PENDING.name())) {
-                        if (changedStatusOfRequestsDto.getStatus().equals(Statuses.REJECTED.name()))
-                            request.setStatus(changedStatusOfRequestsDto.getStatus());
-                        if (changedStatusOfRequestsDto.getStatus().equals(Statuses.CONFIRMED.name())) {
-                            request.setStatus(changedStatusOfRequestsDto.getStatus());
-                            event1.setConfirmedRequests(event1.getConfirmedRequests() + 1L);
-                            event1 = eventRepository.saveAndFlush(event1);
-                            iterable = event1.getConfirmedRequests();
-                        }
-                        requestRepository.saveAndFlush(request);
-                    }
+    public ResponseInformationAboutRequests changeRequestsStatuses(long userId,
+                                                                   long eventId,
+                                                                   ChangedStatusOfRequestsDto dto) {
+
+        Event event = eventRepository.findByIdAndInitiatorId(eventId, userId)
+                .orElseThrow(EntityNotFoundException::new);
+
+        long limit = event.getParticipantLimit();
+        long confirmed = event.getConfirmedRequests();
+
+        Collection<Request> requests =
+                requestRepository.findByIdInAndEventId(dto.getRequestIds(), eventId);
+
+        if (requests.isEmpty()) {
+            throw new DataIntegrityViolationException("Запросы не найдены");
+        }
+
+        for (Request r : requests) {
+            if (!Statuses.PENDING.name().equals(r.getStatus())) {
+                continue;                       // только из PENDING можно менять
+            }
+
+            if (Statuses.REJECTED.name().equals(dto.getStatus())) {
+                r.setStatus(Statuses.REJECTED.name());
+            } else if (Statuses.CONFIRMED.name().equals(dto.getStatus())) {
+                if (limit != 0 && confirmed >= limit) {
+                    throw new DataIntegrityViolationException("Лимит подтверждений достигнут");
                 }
-            } else throw new DataIntegrityViolationException("Data integrity violation exception");
-        } else throw new EntityNotFoundException();
-        ResponseInformationAboutRequests response = new ResponseInformationAboutRequests();
-        response.setConfirmedRequests(UserMapperNew.mapToRequestDto(requestRepository.findByEventIdAndStatus(eventId, Statuses.CONFIRMED.name())));
-        response.setRejectedRequests(UserMapperNew.mapToRequestDto(requestRepository.findByEventIdAndStatus(eventId, Statuses.REJECTED.name())));
-        response.setPendingRequests(UserMapperNew.mapToRequestDto(requestRepository.findByEventIdAndStatus(eventId, Statuses.PENDING.name())));
-        return response;
+                r.setStatus(Statuses.CONFIRMED.name());
+                confirmed++;
+            }
+            requestRepository.save(r);
+        }
+
+        event.setConfirmedRequests(confirmed);
+        eventRepository.save(event);
+
+        ResponseInformationAboutRequests resp = new ResponseInformationAboutRequests();
+        resp.setConfirmedRequests(UserMapperNew.mapToRequestDto(
+                requestRepository.findByEventIdAndStatus(eventId, Statuses.CONFIRMED.name())));
+        resp.setRejectedRequests(UserMapperNew.mapToRequestDto(
+                requestRepository.findByEventIdAndStatus(eventId, Statuses.REJECTED.name())));
+        resp.setPendingRequests(UserMapperNew.mapToRequestDto(
+                requestRepository.findByEventIdAndStatus(eventId, Statuses.PENDING.name())));
+        return resp;
     }
 }
