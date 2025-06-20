@@ -3,13 +3,13 @@ package ru.practicum.explore.user.dto;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
-import lombok.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
-@Getter
-@Setter
-@NoArgsConstructor
+@Data
 @AllArgsConstructor
-@Builder
+@NoArgsConstructor
 public class UserDto {
 
     private Long id;
@@ -19,7 +19,7 @@ public class UserDto {
     private String name;
 
     @NotBlank
-    @Size(min = 6, max = 254)
     @Email
+    @Size(max = 254)
     private String email;
 }

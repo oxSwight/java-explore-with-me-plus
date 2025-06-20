@@ -1,123 +1,119 @@
 package ru.practicum.explore.event.controller;
 
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Positive;
-import jakarta.validation.constraints.PositiveOrZero;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
-import ru.practicum.explore.event.dto.EventDto;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
+import ru.practicum.explore.event.dto.NewEventDto;
 import ru.practicum.explore.event.dto.PatchEventDto;
 import ru.practicum.explore.event.dto.ResponseEventDto;
 import ru.practicum.explore.event.service.EventService;
 
+import java.net.URI;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 
+@Slf4j
 @Validated
 @RestController
 @RequiredArgsConstructor
-@Slf4j
+@RequestMapping
 public class EventController {
 
     private final EventService eventService;
 
-    /* ---------- приватный API пользователя ---------- */
-
-    /** GET / users/{userId}/events/{eventId} */
-    @GetMapping("/users/{userId}/events/{eventId}")
-    public EventDto getEventById(@PathVariable @Positive long userId,
-                                 @PathVariable @Positive long eventId) {
-
-        log.info("GET /users/{}/events/{}", userId, eventId);
-        return eventService.getEventById(userId, eventId);
-    }
-
-    /** GET / users/{userId}/events */
-    @GetMapping("/users/{userId}/events")
-    public Collection<ResponseEventDto> getUserEvents(
-            @PathVariable @Positive long userId,
-            @RequestParam(defaultValue = "0")  @PositiveOrZero Integer from,
-            @RequestParam(defaultValue = "10") @Positive       Integer size) {
-
-        log.info("GET /users/{}/events  from={} size={}", userId, from, size);
-        return eventService.getAllUserEvents(userId, from, size);
-    }
-
-    /** PATCH / users/{userId}/events/{eventId} */
-    @PatchMapping("/users/{userId}/events/{eventId}")
-    public EventDto changeEvent(
-            @PathVariable @Positive long userId,
-            @PathVariable @Positive long eventId,
-            @RequestBody PatchEventDto patchEventDto) {
-
-        log.info("PATCH /users/{}/events/{}", userId, eventId);
-        return eventService.changeEvent(userId, eventId, patchEventDto);
-    }
-
-    /** POST / users/{userId}/events */
     @PostMapping("/users/{userId}/events")
-    public EventDto createEvent(@PathVariable @Positive long userId,
-                                @RequestBody PatchEventDto newEventDto) {
+    public ResponseEntity<ResponseEventDto> createEvent(@PathVariable long userId,
+                                                        @RequestBody @Valid NewEventDto newEventDto) {
 
-        log.info("POST /users/{}/events", userId);
-        return eventService.createEvent(userId, newEventDto);
+        ResponseEventDto created = eventService.createEvent(userId, newEventDto);
+
+        URI location = ServletUriComponentsBuilder
+                .fromCurrentRequest()
+                .path("/{eventId}")
+                .buildAndExpand(created.getId())
+                .toUri();
+
+        return ResponseEntity.created(location).body(created);
     }
 
+    @GetMapping("/users/{userId}/events")
+    public ResponseEntity<Collection<ResponseEventDto>> getUserEvents(@PathVariable long userId,
+                                                                      @RequestParam(defaultValue = "0") @Min(0) Integer from,
+                                                                      @RequestParam(defaultValue = "10") @Positive Integer size) {
 
-    @GetMapping("/events/{id}")
-    public EventDto getPublishedEventById(@PathVariable @Positive long id) {
-        log.info("GET /events/{}", id);
-        return eventService.getPublishedEventById(id);
+        return ResponseEntity.ok(eventService.getUserEvents(userId, from, size));
     }
 
-    /** GET / events — поиск опубликованных */
+    @GetMapping("/users/{userId}/events/{eventId}")
+    public ResponseEntity<ResponseEventDto> getUserEvent(@PathVariable long userId,
+                                                         @PathVariable long eventId) {
+
+        return ResponseEntity.ok(eventService.getUserEventById(userId, eventId));
+    }
+
+    @PatchMapping("/users/{userId}/events/{eventId}")
+    public ResponseEntity<ResponseEventDto> patchUserEvent(@PathVariable long userId,
+                                                           @PathVariable long eventId,
+                                                           @RequestBody @Valid PatchEventDto dto) {
+
+        return ResponseEntity.ok(eventService.changeEvent(userId, eventId, dto));
+    }
+
     @GetMapping("/events")
-    public Collection<ResponseEventDto> searchEvents(
+    public ResponseEntity<Collection<ResponseEventDto>> findPublicEvents(
             @RequestParam(required = false) String text,
             @RequestParam(required = false) List<Long> categories,
             @RequestParam(required = false) Boolean paid,
             @RequestParam(required = false)
-            @DateTimeFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss") LocalDateTime rangeStart,
+            @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime rangeStart,
             @RequestParam(required = false)
-            @DateTimeFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss") LocalDateTime rangeEnd,
+            @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime rangeEnd,
             @RequestParam(defaultValue = "false") Boolean onlyAvailable,
-            @RequestParam(defaultValue = "EVENT_DATE") String sort,
-            @RequestParam(defaultValue = "0")  @PositiveOrZero Integer from,
-            @RequestParam(defaultValue = "10") @Positive       Integer size) {
+            @RequestParam(required = false, defaultValue = "EVENT_DATE") String sort,
+            @RequestParam(defaultValue = "0") @Min(0) Integer from,
+            @RequestParam(defaultValue = "10") @Positive Integer size,
+            HttpServletRequest request) {
 
-        log.info("GET /events  text={} categories={} paid={} …", text, categories, paid);
-        return eventService.findEventsByUser(text, categories, paid,
-                rangeStart, rangeEnd, onlyAvailable, sort, from, size);
+        return ResponseEntity.ok(eventService.findEvents(text, categories, paid,
+                rangeStart, rangeEnd, onlyAvailable, sort, from, size, request));
     }
 
-    /* ---------- административный API ---------- */
+    @GetMapping("/events/{id}")
+    public ResponseEntity<ResponseEventDto> getPublicEvent(@PathVariable long id,
+                                                           HttpServletRequest request) {
 
-    /** GET / admin/events */
+        return ResponseEntity.ok(eventService.getPublicEvent(id, request));
+    }
+
     @GetMapping("/admin/events")
-    public Collection<EventDto> findEventsByAdmin(
+    public ResponseEntity<Collection<ResponseEventDto>> findAdminEvents(
             @RequestParam(required = false) List<Long> users,
             @RequestParam(required = false) List<String> states,
             @RequestParam(required = false) List<Long> categories,
             @RequestParam(required = false)
-            @DateTimeFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss") LocalDateTime rangeStart,
+            @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime rangeStart,
             @RequestParam(required = false)
-            @DateTimeFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss") LocalDateTime rangeEnd,
-            @RequestParam(defaultValue = "0")  @PositiveOrZero Integer from,
-            @RequestParam(defaultValue = "10") @Positive       Integer size) {
+            @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime rangeEnd,
+            @RequestParam(defaultValue = "0") @Min(0) Integer from,
+            @RequestParam(defaultValue = "10") @Positive Integer size) {
 
-        log.info("GET /admin/events");
-        return eventService.findEventsByAdmin(users, states, categories, rangeStart, rangeEnd, from, size);
+        return ResponseEntity.ok(eventService.findAdminEvents(users, states, categories,
+                rangeStart, rangeEnd, from, size));
     }
 
-    /** PATCH / admin/events/{eventId} */
     @PatchMapping("/admin/events/{eventId}")
-    public EventDto changeEventByAdmin(@PathVariable @Positive long eventId,
-                                       @RequestBody PatchEventDto patchEventDto) {
+    public ResponseEntity<ResponseEventDto> patchAdminEvent(@PathVariable long eventId,
+                                                            @RequestBody @Valid PatchEventDto dto) {
 
-        log.info("PATCH /admin/events/{}", eventId);
-        return eventService.changeEventByAdmin(eventId, patchEventDto);
+        return ResponseEntity.ok(eventService.changeEventByAdmin(eventId, dto));
     }
 }

@@ -76,16 +76,29 @@ public final class EventMapperNew {
     }
 
     public static ResponseEventDto mapToResponseEventDto(Event event) {
+        if (event == null) {
+            return null;
+        }
+
         ResponseEventDto dto = new ResponseEventDto();
-        dto.setAnnotation(event.getAnnotation());
         dto.setId(event.getId());
+        dto.setTitle(event.getTitle());
+        dto.setAnnotation(event.getAnnotation());
         dto.setCategory(mapToCategoryDtoWithId(event.getCategory()));
+        dto.setPaid(event.getPaid());
         dto.setEventDate(event.getEventDate());
         dto.setInitiator(mapToUserDtoWithNoEmail(event.getInitiator()));
-        dto.setPaid(event.getPaid());
-        dto.setTitle(event.getTitle());
-        dto.setConfirmedRequests(event.getConfirmedRequests());
         dto.setViews(event.getViews());
+        dto.setConfirmedRequests(event.getConfirmedRequests());
+
+        dto.setDescription(event.getDescription());
+        dto.setParticipantLimit(event.getParticipantLimit());
+        dto.setState(event.getState());
+        dto.setCreatedOn(event.getCreatedOn());
+        dto.setPublishedOn(event.getPublishedOn());
+        dto.setLocation(mapToLocationDto(event.getLocation()));
+        dto.setRequestModeration(event.getRequestModeration());
+
         return dto;
     }
 

@@ -13,14 +13,30 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @NoArgsConstructor
 public class ResponseEventDto {
+
     private Long id;
+    private String title;
     private String annotation;
     private CategoryDtoWithId category;
+    private Boolean paid;
+
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime eventDate;
+
     private UserDtoWithNoEmail initiator;
-    private Boolean paid;
-    private String title;
-    private Long confirmedRequests;
     private Long views;
+    private Long confirmedRequests;
+
+    private String description;
+    private Integer participantLimit;
+    private String state;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime createdOn;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime publishedOn;
+
+    private LocationDto location;
+    private Boolean requestModeration;
 }

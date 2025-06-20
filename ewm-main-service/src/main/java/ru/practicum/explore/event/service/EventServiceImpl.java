@@ -1,6 +1,7 @@
 package ru.practicum.explore.event.service;
 
 import jakarta.persistence.EntityNotFoundException;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -10,18 +11,16 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.practicum.explore.category.model.Category;
 import ru.practicum.explore.category.repository.CategoryRepository;
 import ru.practicum.explore.common.exception.NotFoundException;
-import ru.practicum.explore.event.dto.EventDto;
-import ru.practicum.explore.event.dto.PatchEventDto;
-import ru.practicum.explore.event.dto.ResponseEventDto;
+import ru.practicum.explore.event.dto.*;
 import ru.practicum.explore.event.mapper.EventMapperNew;
 import ru.practicum.explore.event.model.Event;
 import ru.practicum.explore.event.model.EventState;
 import ru.practicum.explore.event.model.Location;
+import ru.practicum.explore.event.repository.EventRepository;
+import ru.practicum.explore.event.repository.LocationRepository;
 import ru.practicum.explore.global.dto.SortValues;
 import ru.practicum.explore.global.dto.Statuses;
 import ru.practicum.explore.user.model.User;
-import ru.practicum.explore.event.repository.EventRepository;
-import ru.practicum.explore.event.repository.LocationRepository;
 import ru.practicum.explore.user.repository.UserRepository;
 
 import java.time.LocalDateTime;
@@ -42,10 +41,10 @@ public class EventServiceImpl implements EventService {
     public EventDto getEventById(long userId, long eventId) {
         return eventRepository.findByIdAndInitiatorId(eventId, userId)
                 .map(EventMapperNew::mapToEventDto)
-                .orElseThrow(() -> new NotFoundException("Event id=" + eventId + " not found for user " + userId));
+                .orElseThrow(() ->
+                        new NotFoundException("Event id=" + eventId + " not found for user " + userId));
     }
 
-    /* ---------- новая перегрузка для публичного эндпоинта ---------- */
     @Override
     public EventDto getPublishedEventById(long eventId) {
         Event event = eventRepository.findByIdAndState(eventId, String.valueOf(EventState.PUBLISHED))
@@ -56,209 +55,375 @@ public class EventServiceImpl implements EventService {
     @Override
     public Collection<ResponseEventDto> getAllUserEvents(long userId, Integer from, Integer size) {
         PageRequest page = PageRequest.of(from > 0 ? from / size : 0, size);
-        return EventMapperNew.mapToResponseEventDto(eventRepository.findByInitiatorId(userId, page));
+        return EventMapperNew.mapToResponseEventDto(
+                eventRepository.findByInitiatorId(userId, page));
     }
 
     @Override
     @Transactional
-    public EventDto changeEvent(long userId, long eventId, PatchEventDto patchEventDto) {
-        Optional<Event> event = eventRepository.findByIdAndInitiatorId(eventId, userId);
-        if (event.isPresent()) {
-            if (event.get().getState().equals(Statuses.PUBLISHED.name()))
-                throw new DataIntegrityViolationException("Data integrity violation exception");
-            Optional<Category> category;
-            Category cat = null;
-            if (patchEventDto.getCategory() != null) {
-                category = categoryRepository.findById(patchEventDto.getCategory());
-                if (category.isPresent()) cat = category.get();
+    public ResponseEventDto changeEvent(long userId,
+                                        long eventId,
+                                        PatchEventDto patchEventDto) {
+
+        Event event = eventRepository.findByIdAndInitiatorId(eventId, userId)
+                .orElseThrow(EntityNotFoundException::new);
+
+        if (Statuses.PUBLISHED.name().equals(event.getState()))
+            throw new DataIntegrityViolationException("Cannot modify published event");
+
+        /* категория */
+        Category cat = null;
+        if (patchEventDto.getCategory() != null) {
+            cat = categoryRepository.findById(patchEventDto.getCategory())
+                    .orElseThrow(() -> new NotFoundException("Category not found"));
+        }
+
+        /* локация */
+        Location location = null;
+        if (patchEventDto.getLocation() != null) {
+            location = locationRepository.saveAndFlush(
+                    EventMapperNew.mapToLocation(patchEventDto.getLocation()));
+        }
+
+        String currentState = event.getState();
+        Event updated = EventMapperNew.changeEvent(event, patchEventDto);
+
+        if (cat != null)      updated.setCategory(cat);
+        if (location != null) updated.setLocation(location);
+
+        if (patchEventDto.getStateAction() != null) {
+            switch (patchEventDto.getStateAction()) {
+                case "SEND_TO_REVIEW" -> updated.setState(Statuses.PENDING.name());
+                case "CANCEL_REVIEW"  -> updated.setState(Statuses.CANCELED.name());
+                default               -> { /* игнор */ }
             }
-            Location location = null;
-            if (patchEventDto.getLocation() != null)
-                location = locationRepository.saveAndFlush(EventMapperNew.mapToLocation(patchEventDto.getLocation()));
-            String state = event.get().getState();
-            Event newEvent = EventMapperNew.changeEvent(event.get(), patchEventDto);
-            if (cat != null) newEvent.setCategory(cat);
-            if (location != null) newEvent.setLocation(location);
-            if (patchEventDto.getStateAction() != null) {
-                switch (patchEventDto.getStateAction()) {
-                    case "SEND_TO_REVIEW":
-                        newEvent.setState(Statuses.PENDING.name());
-                        break;
-                    case "CANCEL_REVIEW":
-                        newEvent.setState(Statuses.CANCELED.name());
-                        break;
-                    default:
-                }
-            } else newEvent.setState(state);
-            return EventMapperNew.mapToEventDto(eventRepository.saveAndFlush(newEvent));
-        } else throw new EntityNotFoundException();
+        } else {
+            updated.setState(currentState);
+        }
+
+        updated = eventRepository.saveAndFlush(updated);
+        return EventMapperNew.mapToResponseEventDto(updated);
     }
 
     @Override
     @Transactional
     public EventDto createEvent(long userId, PatchEventDto newEventDto) {
-        Optional<Category> category = categoryRepository.findById(newEventDto.getCategory());
-        Optional<User> user = userRepository.findById(userId);
-        if (category.isPresent() && user.isPresent()) {
-            Event event = new Event();
-            event = EventMapperNew.changeEvent(event, newEventDto);
-            Location location = locationRepository.saveAndFlush(EventMapperNew.mapToLocation(newEventDto.getLocation()));
-            event.setLocation(location);
-            event.setCategory(category.get());
-            event.setInitiator(user.get());
-            event.setViews(0L);
-            return EventMapperNew.mapToEventDto(eventRepository.saveAndFlush(event));
-        } else throw new EntityNotFoundException();
+
+        Category category = categoryRepository.findById(newEventDto.getCategory())
+                .orElseThrow(() -> new NotFoundException("Category not found"));
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new NotFoundException("User not found"));
+
+        Event event = new Event();
+        EventMapperNew.changeEvent(event, newEventDto);
+
+        Location location = locationRepository.saveAndFlush(
+                EventMapperNew.mapToLocation(newEventDto.getLocation()));
+
+        event.setLocation(location);
+        event.setCategory(category);
+        event.setInitiator(user);
+        event.setViews(0L);
+
+        return EventMapperNew.mapToEventDto(eventRepository.saveAndFlush(event));
     }
 
     @Override
     @Transactional
     public EventDto getPublishedEventById(long eventId, Integer views) {
-        Optional<Event> event = eventRepository.findByIdAndState(eventId, Statuses.PUBLISHED.name());
-        if (event.isPresent()) {
-            Event updated = event.get();
-            updated.setViews(Long.valueOf(views));
-            updated = eventRepository.saveAndFlush(updated);
-            return EventMapperNew.mapToEventDto(updated);
-        } else throw new EntityNotFoundException();
+        Event event = eventRepository.findByIdAndState(eventId, Statuses.PUBLISHED.name())
+                .orElseThrow(EntityNotFoundException::new);
+
+        event.setViews(Long.valueOf(views));
+        return EventMapperNew.mapToEventDto(eventRepository.saveAndFlush(event));
     }
 
     @Override
-    public Collection<ResponseEventDto> findEventsByUser(String text, List<Long> categories, Boolean paid, LocalDateTime rangeStart, LocalDateTime rangeEnd, Boolean onlyAvailable, String sort, Integer from, Integer size) {
+    public Collection<ResponseEventDto> findEventsByUser(String text,
+                                                         List<Long> categories,
+                                                         Boolean paid,
+                                                         LocalDateTime rangeStart,
+                                                         LocalDateTime rangeEnd,
+                                                         Boolean onlyAvailable,
+                                                         String sort,
+                                                         Integer from,
+                                                         Integer size) {
+
         PageRequest page = PageRequest.of(from > 0 ? from / size : 0, size);
         List<ResponseEventDto> result = new ArrayList<>();
+
         if (!text.equals(" ") || !text.isBlank()) {
             if (!categories.equals(List.of(0L))) {
                 if (onlyAvailable) {
-                    if (paid)
-                        result.addAll(EventMapperNew.mapToResponseEventDto(eventRepository.findByPaidAndEventDateGreaterThanEqualAndEventDateLessThanEqualAndParticipantLimitNotNullAndStateAndAnnotationIgnoreCaseOrDescriptionIgnoreCaseAndCategoryIdIn(paid, rangeStart, rangeEnd, Statuses.PUBLISHED.name(), text, text, categories, page)));
+                    if (Boolean.TRUE.equals(paid))
+                        result.addAll(EventMapperNew.mapToResponseEventDto(
+                                eventRepository.findByPaidAndEventDateGreaterThanEqualAndEventDateLessThanEqualAndParticipantLimitNotNullAndStateAndAnnotationIgnoreCaseOrDescriptionIgnoreCaseAndCategoryIdIn(
+                                        true, rangeStart, rangeEnd, Statuses.PUBLISHED.name(), text, text, categories, page)));
                     else
-                        result.addAll(EventMapperNew.mapToResponseEventDto(eventRepository.findByEventDateGreaterThanEqualAndEventDateLessThanEqualAndParticipantLimitNotNullAndStateAndAnnotationIgnoreCaseOrDescriptionIgnoreCaseAndCategoryIdIn(rangeStart, rangeEnd, Statuses.PUBLISHED.name(), text, text, categories, page)));
+                        result.addAll(EventMapperNew.mapToResponseEventDto(
+                                eventRepository.findByEventDateGreaterThanEqualAndEventDateLessThanEqualAndParticipantLimitNotNullAndStateAndAnnotationIgnoreCaseOrDescriptionIgnoreCaseAndCategoryIdIn(
+                                        rangeStart, rangeEnd, Statuses.PUBLISHED.name(), text, text, categories, page)));
                 } else {
-                    if (paid)
-                        result.addAll(EventMapperNew.mapToResponseEventDto(eventRepository.findByPaidAndEventDateGreaterThanEqualAndEventDateLessThanEqualAndStateAndAnnotationIgnoreCaseOrDescriptionIgnoreCaseAndCategoryIdIn(paid, rangeStart, rangeEnd, Statuses.PUBLISHED.name(), text, text, categories, page)));
+                    if (Boolean.TRUE.equals(paid))
+                        result.addAll(EventMapperNew.mapToResponseEventDto(
+                                eventRepository.findByPaidAndEventDateGreaterThanEqualAndEventDateLessThanEqualAndStateAndAnnotationIgnoreCaseOrDescriptionIgnoreCaseAndCategoryIdIn(
+                                        true, rangeStart, rangeEnd, Statuses.PUBLISHED.name(), text, text, categories, page)));
                     else
-                        result.addAll(EventMapperNew.mapToResponseEventDto(eventRepository.findByEventDateGreaterThanEqualAndEventDateLessThanEqualAndStateAndAnnotationIgnoreCaseOrDescriptionIgnoreCaseAndCategoryIdIn(rangeStart, rangeEnd, Statuses.PUBLISHED.name(), text, text, categories, page)));
+                        result.addAll(EventMapperNew.mapToResponseEventDto(
+                                eventRepository.findByEventDateGreaterThanEqualAndEventDateLessThanEqualAndStateAndAnnotationIgnoreCaseOrDescriptionIgnoreCaseAndCategoryIdIn(
+                                        rangeStart, rangeEnd, Statuses.PUBLISHED.name(), text, text, categories, page)));
                 }
-            } else {
+            } else { /* … оставшаяся часть каскада (сохранена без изменений) … */
                 if (onlyAvailable) {
-                    if (paid)
-                        result.addAll(EventMapperNew.mapToResponseEventDto(eventRepository.findByPaidAndEventDateGreaterThanEqualAndEventDateLessThanEqualAndParticipantLimitNotNullAndStateAndAnnotationIgnoreCaseOrDescriptionIgnoreCase(paid, rangeStart, rangeEnd, Statuses.PUBLISHED.name(), text, text, page)));
+                    if (Boolean.TRUE.equals(paid))
+                        result.addAll(EventMapperNew.mapToResponseEventDto(
+                                eventRepository.findByPaidAndEventDateGreaterThanEqualAndEventDateLessThanEqualAndParticipantLimitNotNullAndStateAndAnnotationIgnoreCaseOrDescriptionIgnoreCase(
+                                        true, rangeStart, rangeEnd, Statuses.PUBLISHED.name(), text, text, page)));
                     else
-                        result.addAll(EventMapperNew.mapToResponseEventDto(eventRepository.findByEventDateGreaterThanEqualAndEventDateLessThanEqualAndParticipantLimitNotNullAndStateAndAnnotationIgnoreCaseOrDescriptionIgnoreCase(rangeStart, rangeEnd, Statuses.PUBLISHED.name(), text, text, page)));
-
+                        result.addAll(EventMapperNew.mapToResponseEventDto(
+                                eventRepository.findByEventDateGreaterThanEqualAndEventDateLessThanEqualAndParticipantLimitNotNullAndStateAndAnnotationIgnoreCaseOrDescriptionIgnoreCase(
+                                        rangeStart, rangeEnd, Statuses.PUBLISHED.name(), text, text, page)));
                 } else {
-                    if (paid)
-                        result.addAll(EventMapperNew.mapToResponseEventDto(eventRepository.findByPaidAndEventDateGreaterThanEqualAndEventDateLessThanEqualAndStateAndAnnotationIgnoreCaseOrDescriptionIgnoreCase(paid, rangeStart, rangeEnd, Statuses.PUBLISHED.name(), text, text, page)));
+                    if (Boolean.TRUE.equals(paid))
+                        result.addAll(EventMapperNew.mapToResponseEventDto(
+                                eventRepository.findByPaidAndEventDateGreaterThanEqualAndEventDateLessThanEqualAndStateAndAnnotationIgnoreCaseOrDescriptionIgnoreCase(
+                                        true, rangeStart, rangeEnd, Statuses.PUBLISHED.name(), text, text, page)));
                     else
-                        result.addAll(EventMapperNew.mapToResponseEventDto(eventRepository.findByEventDateGreaterThanEqualAndEventDateLessThanEqualAndStateAndAnnotationIgnoreCaseOrDescriptionIgnoreCase(rangeStart, rangeEnd, Statuses.PUBLISHED.name(), text, text, page)));
+                        result.addAll(EventMapperNew.mapToResponseEventDto(
+                                eventRepository.findByEventDateGreaterThanEqualAndEventDateLessThanEqualAndStateAndAnnotationIgnoreCaseOrDescriptionIgnoreCase(
+                                        rangeStart, rangeEnd, Statuses.PUBLISHED.name(), text, text, page)));
                 }
             }
-        } else {
+        } else { /* … вторая ветка каскада (также без изменений) … */
             if (!categories.equals(List.of(0L))) {
                 if (onlyAvailable) {
-                    if (paid)
-                        result.addAll(EventMapperNew.mapToResponseEventDto(eventRepository.findByPaidAndEventDateGreaterThanEqualAndEventDateLessThanEqualAndParticipantLimitNotNullAndStateAndCategoryIdIn(paid, rangeStart, rangeEnd, Statuses.PUBLISHED.name(), categories, page)));
+                    if (Boolean.TRUE.equals(paid))
+                        result.addAll(EventMapperNew.mapToResponseEventDto(
+                                eventRepository.findByPaidAndEventDateGreaterThanEqualAndEventDateLessThanEqualAndParticipantLimitNotNullAndStateAndCategoryIdIn(
+                                        true, rangeStart, rangeEnd, Statuses.PUBLISHED.name(), categories, page)));
                     else
-                        result.addAll(EventMapperNew.mapToResponseEventDto(eventRepository.findByEventDateGreaterThanEqualAndEventDateLessThanEqualAndParticipantLimitNotNullAndStateAndCategoryIdIn(rangeStart, rangeEnd, Statuses.PUBLISHED.name(), categories, page)));
+                        result.addAll(EventMapperNew.mapToResponseEventDto(
+                                eventRepository.findByEventDateGreaterThanEqualAndEventDateLessThanEqualAndParticipantLimitNotNullAndStateAndCategoryIdIn(
+                                        rangeStart, rangeEnd, Statuses.PUBLISHED.name(), categories, page)));
                 } else {
-                    if (paid)
-                        result.addAll(EventMapperNew.mapToResponseEventDto(eventRepository.findByPaidAndEventDateGreaterThanEqualAndEventDateLessThanEqualAndStateAndCategoryIdIn(paid, rangeStart, rangeEnd, Statuses.PUBLISHED.name(), categories, page)));
+                    if (Boolean.TRUE.equals(paid))
+                        result.addAll(EventMapperNew.mapToResponseEventDto(
+                                eventRepository.findByPaidAndEventDateGreaterThanEqualAndEventDateLessThanEqualAndStateAndCategoryIdIn(
+                                        true, rangeStart, rangeEnd, Statuses.PUBLISHED.name(), categories, page)));
                     else
-                        result.addAll(EventMapperNew.mapToResponseEventDto(eventRepository.findByEventDateGreaterThanEqualAndEventDateLessThanEqualAndStateAndCategoryIdIn(rangeStart, rangeEnd, Statuses.PUBLISHED.name(), categories, page)));
+                        result.addAll(EventMapperNew.mapToResponseEventDto(
+                                eventRepository.findByEventDateGreaterThanEqualAndEventDateLessThanEqualAndStateAndCategoryIdIn(
+                                        rangeStart, rangeEnd, Statuses.PUBLISHED.name(), categories, page)));
                 }
             } else {
                 if (onlyAvailable) {
-                    if (paid)
-                        result.addAll(EventMapperNew.mapToResponseEventDto(eventRepository.findByPaidAndEventDateGreaterThanEqualAndEventDateLessThanEqualAndParticipantLimitNotNullAndState(paid, rangeStart, rangeEnd, Statuses.PUBLISHED.name(), page)));
+                    if (Boolean.TRUE.equals(paid))
+                        result.addAll(EventMapperNew.mapToResponseEventDto(
+                                eventRepository.findByPaidAndEventDateGreaterThanEqualAndEventDateLessThanEqualAndParticipantLimitNotNullAndState(
+                                        true, rangeStart, rangeEnd, Statuses.PUBLISHED.name(), page)));
                     else
-                        result.addAll(EventMapperNew.mapToResponseEventDto(eventRepository.findByEventDateGreaterThanEqualAndEventDateLessThanEqualAndParticipantLimitNotNullAndState(rangeStart, rangeEnd, Statuses.PUBLISHED.name(), page)));
+                        result.addAll(EventMapperNew.mapToResponseEventDto(
+                                eventRepository.findByEventDateGreaterThanEqualAndEventDateLessThanEqualAndParticipantLimitNotNullAndState(
+                                        rangeStart, rangeEnd, Statuses.PUBLISHED.name(), page)));
                 } else {
-                    if (paid)
-                        result.addAll(EventMapperNew.mapToResponseEventDto(eventRepository.findByPaidAndEventDateGreaterThanEqualAndEventDateLessThanEqualAndState(paid, rangeStart, rangeEnd, Statuses.PUBLISHED.name(), page)));
+                    if (Boolean.TRUE.equals(paid))
+                        result.addAll(EventMapperNew.mapToResponseEventDto(
+                                eventRepository.findByPaidAndEventDateGreaterThanEqualAndEventDateLessThanEqualAndState(
+                                        true, rangeStart, rangeEnd, Statuses.PUBLISHED.name(), page)));
                     else
-                        result.addAll(EventMapperNew.mapToResponseEventDto(eventRepository.findByEventDateGreaterThanEqualAndEventDateLessThanEqualAndState(rangeStart, rangeEnd, Statuses.PUBLISHED.name(), page)));
+                        result.addAll(EventMapperNew.mapToResponseEventDto(
+                                eventRepository.findByEventDateGreaterThanEqualAndEventDateLessThanEqualAndState(
+                                        rangeStart, rangeEnd, Statuses.PUBLISHED.name(), page)));
                 }
             }
         }
-        if (sort.equals(SortValues.VIEWS.name())) result.sort(Comparator.comparing(ResponseEventDto::getViews).reversed());
-        if (sort.equals(SortValues.EVENT_DATE.name())) result.sort(Comparator.comparing(ResponseEventDto::getEventDate).reversed());
+
+        if (SortValues.VIEWS.name().equals(sort))
+            result.sort(Comparator.comparing(ResponseEventDto::getViews).reversed());
+        if (SortValues.EVENT_DATE.name().equals(sort))
+            result.sort(Comparator.comparing(ResponseEventDto::getEventDate).reversed());
+
         return result;
     }
 
     @Override
     @Transactional
-    public EventDto changeEventByAdmin(long eventId, PatchEventDto patchEventDto) {
-        Optional<Event> event = eventRepository.findById(eventId);
-        if (event.isPresent()) {
-            Optional<Category> category;
-            Category cat = null;
-            if (patchEventDto.getCategory() != null) {
-                category = categoryRepository.findById(patchEventDto.getCategory());
-                if (category.isPresent()) cat = category.get();
-            }
-            Location location = null;
-            if (patchEventDto.getLocation() != null)
-                location = locationRepository.saveAndFlush(EventMapperNew.mapToLocation(patchEventDto.getLocation()));
-            String state = event.get().getState();
-            Event newEvent = EventMapperNew.changeEvent(event.get(), patchEventDto);
-            if (cat != null) newEvent.setCategory(cat);
-            if (location != null) newEvent.setLocation(location);
-            if (patchEventDto.getStateAction() != null) {
-                switch (patchEventDto.getStateAction()) {
-                    case "REJECT_EVENT": {
-                        if (state.equals(Statuses.PUBLISHED.name()))
-                            throw new DataIntegrityViolationException("Data integrity violation exception");
-                        newEvent.setState(Statuses.CANCELED.name());
-                        return EventMapperNew.mapToEventDto(eventRepository.saveAndFlush(newEvent));
-                    }
-                    case "PUBLISH_EVENT": {
-                        if (state.equals(Statuses.PUBLISHED.name()) || state.equals(Statuses.CANCELED.name()))
-                            throw new DataIntegrityViolationException("Data integrity violation exception");
-                        newEvent.setState(Statuses.PUBLISHED.name());
-                        newEvent.setPublishedOn(LocalDateTime.now());
-                        return EventMapperNew.mapToEventDto(eventRepository.saveAndFlush(newEvent));
-                    }
-                    default:
+    public ResponseEventDto changeEventByAdmin(long eventId, PatchEventDto patchEventDto) {
+
+        Event event = eventRepository.findById(eventId)
+                .orElseThrow(EntityNotFoundException::new);
+
+        Category cat = null;
+        if (patchEventDto.getCategory() != null) {
+            cat = categoryRepository.findById(patchEventDto.getCategory())
+                    .orElseThrow(() -> new NotFoundException("Category not found"));
+        }
+
+        Location location = null;
+        if (patchEventDto.getLocation() != null) {
+            location = locationRepository.saveAndFlush(
+                    EventMapperNew.mapToLocation(patchEventDto.getLocation()));
+        }
+
+        String currentState = event.getState();
+        Event updated = EventMapperNew.changeEvent(event, patchEventDto);
+
+        if (cat != null)      updated.setCategory(cat);
+        if (location != null) updated.setLocation(location);
+
+        if (patchEventDto.getStateAction() != null) {
+            switch (patchEventDto.getStateAction()) {
+                case "REJECT_EVENT" -> {
+                    if (Statuses.PUBLISHED.name().equals(currentState))
+                        throw new DataIntegrityViolationException("Event already published");
+                    updated.setState(Statuses.CANCELED.name());
                 }
-            } else newEvent.setState(state);
-            return EventMapperNew.mapToEventDto(eventRepository.saveAndFlush(newEvent));
-        } else throw new EntityNotFoundException();
+                case "PUBLISH_EVENT" -> {
+                    if (Statuses.PUBLISHED.name().equals(currentState) ||
+                            Statuses.CANCELED.name().equals(currentState))
+                        throw new DataIntegrityViolationException("Event cannot be published");
+                    updated.setState(Statuses.PUBLISHED.name());
+                    updated.setPublishedOn(LocalDateTime.now());
+                }
+                default -> { /* игнор */ }
+            }
+        } else {
+            updated.setState(currentState);
+        }
+
+        updated = eventRepository.saveAndFlush(updated);
+        return EventMapperNew.mapToResponseEventDto(updated);
     }
 
     @Override
-    public Collection<EventDto> findEventsByAdmin(List<Long> users, List<String> states, List<Long> categories, LocalDateTime rangeStart, LocalDateTime rangeEnd, Integer from, Integer size) {
+    public Collection<ResponseEventDto> findEventsByAdmin(List<Long> users,
+                                                          List<String> states,
+                                                          List<Long> categories,
+                                                          LocalDateTime rangeStart,
+                                                          LocalDateTime rangeEnd,
+                                                          Integer from,
+                                                          Integer size) {
+
         PageRequest page = PageRequest.of(from > 0 ? from / size : 0, size);
-        List<EventDto> result = new ArrayList<>();
+        List<ResponseEventDto> result = new ArrayList<>();
+
         if (!users.equals(List.of(0L))) {
             if (!states.equals(List.of("0"))) {
-                if (!categories.equals(List.of(0L))) {
-                    result.addAll(EventMapperNew.mapToEventDto(eventRepository.findByInitiatorIdInAndStateInAndCategoryIdInAndEventDateGreaterThanEqualAndEventDateLessThanEqual(users, states, categories, rangeStart, rangeEnd, page)));
-                } else {
-                    result.addAll(EventMapperNew.mapToEventDto(eventRepository.findByInitiatorIdInAndStateInAndEventDateGreaterThanEqualAndEventDateLessThanEqual(users, states, rangeStart, rangeEnd, page)));
-                }
+                if (!categories.equals(List.of(0L)))
+                    result.addAll(EventMapperNew.mapToResponseEventDto(
+                            eventRepository.findByInitiatorIdInAndStateInAndCategoryIdInAndEventDateGreaterThanEqualAndEventDateLessThanEqual(
+                                    users, states, categories, rangeStart, rangeEnd, page)));
+                else
+                    result.addAll(EventMapperNew.mapToResponseEventDto(
+                            eventRepository.findByInitiatorIdInAndStateInAndEventDateGreaterThanEqualAndEventDateLessThanEqual(
+                                    users, states, rangeStart, rangeEnd, page)));
             } else {
-                if (!categories.equals(List.of(0L))) {
-                    result.addAll(EventMapperNew.mapToEventDto(eventRepository.findByInitiatorIdInAndCategoryIdInAndEventDateGreaterThanEqualAndEventDateLessThanEqual(users, categories, rangeStart, rangeEnd, page)));
-                } else {
-                    result.addAll(EventMapperNew.mapToEventDto(eventRepository.findByInitiatorIdInAndEventDateGreaterThanEqualAndEventDateLessThanEqual(users, rangeStart, rangeEnd, page)));
-                }
+                if (!categories.equals(List.of(0L)))
+                    result.addAll(EventMapperNew.mapToResponseEventDto(
+                            eventRepository.findByInitiatorIdInAndCategoryIdInAndEventDateGreaterThanEqualAndEventDateLessThanEqual(
+                                    users, categories, rangeStart, rangeEnd, page)));
+                else
+                    result.addAll(EventMapperNew.mapToResponseEventDto(
+                            eventRepository.findByInitiatorIdInAndEventDateGreaterThanEqualAndEventDateLessThanEqual(
+                                    users, rangeStart, rangeEnd, page)));
             }
         } else {
             if (!states.equals(List.of("0"))) {
-                if (!categories.equals(List.of(0L))) {
-                    result.addAll(EventMapperNew.mapToEventDto(eventRepository.findByStateInAndCategoryIdInAndEventDateGreaterThanEqualAndEventDateLessThanEqual(states, categories, rangeStart, rangeEnd, page)));
-                } else {
-                    result.addAll(EventMapperNew.mapToEventDto(eventRepository.findByStateInAndEventDateGreaterThanEqualAndEventDateLessThanEqual(states, rangeStart, rangeEnd, page)));
-                }
+                if (!categories.equals(List.of(0L)))
+                    result.addAll(EventMapperNew.mapToResponseEventDto(
+                            eventRepository.findByStateInAndCategoryIdInAndEventDateGreaterThanEqualAndEventDateLessThanEqual(
+                                    states, categories, rangeStart, rangeEnd, page)));
+                else
+                    result.addAll(EventMapperNew.mapToResponseEventDto(
+                            eventRepository.findByStateInAndEventDateGreaterThanEqualAndEventDateLessThanEqual(
+                                    states, rangeStart, rangeEnd, page)));
             } else {
-                if (!categories.equals(List.of(0L))) {
-                    result.addAll(EventMapperNew.mapToEventDto(eventRepository.findByCategoryIdInAndEventDateGreaterThanEqualAndEventDateLessThanEqual(categories, rangeStart, rangeEnd, page)));
-                } else {
-                    result.addAll(EventMapperNew.mapToEventDto(eventRepository.findByEventDateGreaterThanEqualAndEventDateLessThanEqual(rangeStart, rangeEnd, page)));
-                }
+                if (!categories.equals(List.of(0L)))
+                    result.addAll(EventMapperNew.mapToResponseEventDto(
+                            eventRepository.findByCategoryIdInAndEventDateGreaterThanEqualAndEventDateLessThanEqual(
+                                    categories, rangeStart, rangeEnd, page)));
+                else
+                    result.addAll(EventMapperNew.mapToResponseEventDto(
+                            eventRepository.findByEventDateGreaterThanEqualAndEventDateLessThanEqual(
+                                    rangeStart, rangeEnd, page)));
             }
         }
         return result;
+    }
+
+    @Override
+    public Collection<ResponseEventDto> getUserEvents(long userId, int from, int size) {
+        return getAllUserEvents(userId, from, size);
+    }
+
+    @Override
+    public ResponseEventDto getUserEventById(long userId, long eventId) {
+        Event event = eventRepository.findByIdAndInitiatorId(eventId, userId)
+                .orElseThrow(() ->
+                        new NotFoundException("Event id=" + eventId + " not found for user " + userId));
+        return EventMapperNew.mapToResponseEventDto(event);
+    }
+
+    @Override
+    public Collection<ResponseEventDto> findEvents(String text,
+                                                   List<Long> categories,
+                                                   Boolean paid,
+                                                   LocalDateTime rangeStart,
+                                                   LocalDateTime rangeEnd,
+                                                   Boolean onlyAvailable,
+                                                   String sort,
+                                                   Integer from,
+                                                   Integer size,
+                                                   HttpServletRequest request) {
+
+        log.debug("PUBLIC SEARCH, ip={}, uri={}", request.getRemoteAddr(), request.getRequestURI());
+        return findEventsByUser(text, categories, paid, rangeStart, rangeEnd,
+                onlyAvailable, sort, from, size);
+    }
+
+    @Override
+    @Transactional
+    public ResponseEventDto getPublicEvent(long eventId, HttpServletRequest request) {
+        Event event = eventRepository.findByIdAndState(eventId, Statuses.PUBLISHED.name())
+                .orElseThrow(() -> new NotFoundException("Published event id=" + eventId + " not found"));
+
+        event.setViews(event.getViews() + 1);
+        return EventMapperNew.mapToResponseEventDto(eventRepository.saveAndFlush(event));
+    }
+
+    @Override
+    public Collection<ResponseEventDto> findAdminEvents(List<Long> users,
+                                                        List<String> states,
+                                                        List<Long> categories,
+                                                        LocalDateTime rangeStart,
+                                                        LocalDateTime rangeEnd,
+                                                        Integer from,
+                                                        Integer size) {
+
+        return findEventsByAdmin(users, states, categories, rangeStart, rangeEnd, from, size);
+    }
+
+    @Override
+    @Transactional
+    public ResponseEventDto createEvent(long userId, NewEventDto newEventDto) {
+
+        PatchEventDto patch = new PatchEventDto(
+                newEventDto.getAnnotation(),
+                newEventDto.getCategory(),
+                newEventDto.getDescription(),
+                newEventDto.getEventDate(),
+                newEventDto.getLocation(),
+                newEventDto.getPaid(),
+                newEventDto.getParticipantLimit(),
+                newEventDto.getRequestModeration(),
+                null,
+                newEventDto.getTitle()
+        );
+
+        EventDto created = createEvent(userId, patch);  // «старый» метод
+        Event entity = eventRepository.findById(created.getId())
+                .orElseThrow(() -> new NotFoundException("Event not found after creation"));
+
+        return EventMapperNew.mapToResponseEventDto(entity);
     }
 }
