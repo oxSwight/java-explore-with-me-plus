@@ -1,8 +1,11 @@
 package ru.practicum.explore.global.controller;
 
+import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.validation.BindException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -17,9 +20,9 @@ import java.util.List;
 public class ExceptionController {
 
     /* ---------- 404 ---------- */
-    @ExceptionHandler(NotFoundException.class)
+    @ExceptionHandler({ NotFoundException.class, EntityNotFoundException.class })
     @ResponseStatus(HttpStatus.NOT_FOUND)
-    public ApiError handleNotFound(NotFoundException ex) {
+    public ApiError handleNotFound(Exception ex) {
         return build(HttpStatus.NOT_FOUND, "Сущность не найдена", ex);
     }
 
@@ -28,7 +31,10 @@ public class ExceptionController {
             BadRequestException.class,
             ConstraintViolationException.class,
             MethodArgumentNotValidException.class,
-            MethodArgumentTypeMismatchException.class
+            MethodArgumentTypeMismatchException.class,
+            BindException.class,
+            IllegalArgumentException.class,
+            IllegalStateException.class
     })
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ApiError handleBadRequest(Exception ex) {
@@ -43,14 +49,14 @@ public class ExceptionController {
     }
 
     /* ---------- 409 ---------- */
-    @ExceptionHandler(ConflictException.class)
+    @ExceptionHandler({ ConflictException.class, DataIntegrityViolationException.class })
     @ResponseStatus(HttpStatus.CONFLICT)
-    public ApiError handleConflict(ConflictException ex) {
+    public ApiError handleConflict(Exception ex) {
         return build(HttpStatus.CONFLICT, "Конфликт данных", ex);
     }
 
     /* ---------- 500 ---------- */
-    @ExceptionHandler(Throwable.class)
+    @ExceptionHandler(Throwable.class)   // «catch-all» – последним!
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public ApiError handleUnexpected(Throwable ex) {
         log.error("Необработанная ошибка", ex);

@@ -3,53 +3,49 @@ package ru.practicum.explore.category.controller;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
-import ru.practicum.explore.category.dto.*;
-import ru.practicum.explore.category.mapper.CategoryMapper;
+import ru.practicum.explore.category.dto.CategoryDto;
+import ru.practicum.explore.category.dto.CategoryDtoWithId;
 import ru.practicum.explore.category.service.CategoryService;
 
-import java.util.Collection;
+import java.util.List;
 
 @Validated
 @RestController
 @RequestMapping("/admin/categories")
 @RequiredArgsConstructor
+@Slf4j
 public class CategoryAdminController {
 
     private final CategoryService service;
-    private final CategoryMapper mapper;
 
-    /* ---------- create ---------- */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public CategoryDtoWithId add(@RequestBody @Valid NewCategoryDto dto) {
-        CategoryDto inner = mapper.toCategoryDto(dto);
-        return service.createCategory(inner);
+    public CategoryDtoWithId create(@RequestBody @Valid CategoryDto dto) {
+        log.info("ADMIN create category {}", dto);
+        return service.createCategory(dto);
     }
 
-    /* ---------- update ---------- */
+    @GetMapping
+    public List<CategoryDtoWithId> findAll() {
+        return List.copyOf(service.getAllCategories(0, Integer.MAX_VALUE));
+    }
+
     @PatchMapping("/{catId}")
     public CategoryDtoWithId update(@PathVariable @Positive long catId,
-                                    @RequestBody @Valid NewCategoryDto dto) {
-        CategoryDto inner = mapper.toCategoryDto(dto);
-        return service.changeCategory(catId, inner);
+                                    @RequestBody @Valid CategoryDto dto) {
+
+        log.info("ADMIN update category id={}", catId);
+        return service.changeCategory(catId, dto);
     }
 
-    /* ---------- delete ---------- */
     @DeleteMapping("/{catId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable @Positive long catId) {
+        log.info("ADMIN delete category {}", catId);
         service.deleteCategory(catId);
-    }
-
-    /* ---------- list (постранично) ---------- */
-    @GetMapping
-    public Collection<CategoryDtoWithId> findAll(
-            @RequestParam(defaultValue = "0") @Positive Integer from,
-            @RequestParam(defaultValue = "10") @Positive Integer size) {
-
-        return service.getAllCategories(from, size);
     }
 }
