@@ -18,6 +18,8 @@ import ru.practicum.explore.user.model.User;
 import ru.practicum.explore.user.repository.RequestRepository;
 import ru.practicum.explore.user.repository.UserRepository;
 import ru.practicum.explore.user.dto.NewUserDto;
+import ru.practicum.explore.common.exception.NotFoundException;
+import ru.practicum.explore.common.exception.ConflictException;
 
 import java.util.*;
 
@@ -74,43 +76,43 @@ public class UserServiceImpl implements UserService {
     @Transactional
     public RequestDto createRequest(long userId, long eventId) {
 
+        /* 1. базовые проверки существования сущностей -------------- */
         Event event = eventRepository.findById(eventId)
-                .orElseThrow(EntityNotFoundException::new);
-        userRepository.findById(userId)
-                .orElseThrow(EntityNotFoundException::new);
+                .orElseThrow(() -> new NotFoundException(
+                        "Событие с id=" + eventId + " не найдено"));
 
-        // уже есть заявка?
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new NotFoundException(
+                        "Пользователь с id=" + userId + " не найден"));
+        /* 2. бизнес-ограничения ------------------------------------ */
         if (requestRepository.findByRequesterIdAndEventId(userId, eventId).isPresent()) {
-            throw new DataIntegrityViolationException("Повторная заявка запрещена");
+            throw new ConflictException("Повторный запрос не допускается");          // 409
         }
-        // инициатор события?
-        if (Objects.equals(event.getInitiator().getId(), userId)) {
-            throw new DataIntegrityViolationException("Инициатор не может отправлять заявку на своё событие");
+        if (event.getInitiator().getId() == userId) {
+            throw new ConflictException("Инициатор не может подать заявку на своё событие"); // 409
         }
-        // событие не опубликовано?
         if (!Statuses.PUBLISHED.name().equals(event.getState())) {
-            throw new DataIntegrityViolationException("Событие ещё не опубликовано");
+            throw new ConflictException("Нельзя подать заявку на неопубликованное событие"); // 409
         }
-        // лимит достигнут?
-        long limit = event.getParticipantLimit();          // int → long
-        if (limit != 0 && event.getConfirmedRequests() >= limit) {
-            throw new DataIntegrityViolationException("Лимит заявок достигнут");
+        if (event.getParticipantLimit() != 0 &&
+                Objects.equals(event.getConfirmedRequests(), (long) event.getParticipantLimit())) {
+            throw new ConflictException("Лимит участников достигнут");                        // 409
         }
 
-        /* формируем заявку */
-        Request req = new Request();
-        req.setEventId(eventId);
-        req.setRequesterId(userId);
+        /* 3. создание заявки --------------------------------------- */
+        Request request = new Request();
+        request.setEventId(event.getId());
+        request.setRequesterId(user.getId());
 
-        if (!event.getRequestModeration() || limit == 0) {
-            req.setStatus(Statuses.CONFIRMED.name());
+        if (Boolean.FALSE.equals(event.getRequestModeration()) || event.getParticipantLimit() == 0) {
+            request.setStatus(Statuses.CONFIRMED.name());
             event.setConfirmedRequests(event.getConfirmedRequests() + 1);
             eventRepository.save(event);
         } else {
-            req.setStatus(Statuses.PENDING.name());
+            request.setStatus(Statuses.PENDING.name());
         }
 
-        return UserMapperNew.mapToRequestDto(requestRepository.save(req));
+        return UserMapperNew.mapToRequestDto(requestRepository.save(request));
     }
 
     @Override

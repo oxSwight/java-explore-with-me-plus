@@ -28,13 +28,14 @@ public class UserController {
 
     @PostMapping("/users/{userId}/requests")
     public ResponseEntity<RequestDto> createRequest(@PathVariable @Positive long userId,
-                                                    @RequestParam @Positive long eventId) {
-        log.info("POST /users/{}/requests?eventId={}", userId, eventId);
+                                                    @RequestParam @Positive Long eventId) {
+        log.info("POST /users/{}/requests?eventId={} – create participation request", userId, eventId);
         RequestDto dto = userService.createRequest(userId, eventId);
 
-        URI location = ServletUriComponentsBuilder
-                .fromCurrentRequest().path("/{id}")
-                .buildAndExpand(dto.getId()).toUri();
+        URI location = ServletUriComponentsBuilder.fromCurrentRequest()
+                .path("/{id}")
+                .buildAndExpand(dto.getId())
+                .toUri();
         return ResponseEntity.created(location).body(dto);
     }
 
