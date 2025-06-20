@@ -20,6 +20,6 @@ public class UserDto {
 
     @NotBlank
     @Email
-    @Size(max = 254)
+    @Size(min = 6, max = 254)
     private String email;
 }
