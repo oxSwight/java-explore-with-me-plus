@@ -173,8 +173,8 @@ public class EventServiceImpl implements EventService {
                 ? List.of(0L) : categories;
         boolean  isPaid     = Boolean.TRUE.equals(paid);
         boolean  onlyAvail  = Boolean.TRUE.equals(onlyAvailable);
-        int      pageFrom   = from         == null ? 0    : from;
-        int      pageSize   = size         == null ? 10   : size;
+        int pageFrom = from == null ? 0 : from;
+        int pageSize = (size == null || size <= 0) ? 10 : size;
         String   sortMode   = sort         == null ? SortValues.EVENT_DATE.name()
                 : sort.toUpperCase();
 
@@ -573,16 +573,14 @@ public class EventServiceImpl implements EventService {
         }
         switch (stateAction) {
             case "SEND_TO_REVIEW" -> updated.setState(Statuses.PENDING.name());
-            case "CANCEL_REVIEW"  -> updated.setState(Statuses.CANCELED.name());
-            case "REJECT_EVENT" -> {
+            case "CANCEL_REVIEW", "REJECT_EVENT" -> {
                 if (Statuses.PUBLISHED.name().equals(prevState)) {
                     throw new DataIntegrityViolationException("Event already published");
                 }
                 updated.setState(Statuses.CANCELED.name());
             }
             case "PUBLISH_EVENT" -> {
-                if (Statuses.PUBLISHED.name().equals(prevState)
-                        || Statuses.CANCELED.name().equals(prevState)) {
+                if (Statuses.PUBLISHED.name().equals(prevState) || Statuses.CANCELED.name().equals(prevState)) {
                     throw new DataIntegrityViolationException("Event cannot be published");
                 }
                 updated.setState(Statuses.PUBLISHED.name());

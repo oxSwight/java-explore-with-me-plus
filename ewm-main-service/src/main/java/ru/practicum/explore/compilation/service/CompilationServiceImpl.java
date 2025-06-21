@@ -27,9 +27,9 @@ import java.util.*;
 @Transactional(readOnly = true)
 public class CompilationServiceImpl implements CompilationService {
 
-    private final CompilationRepository compilationRepository;
+    private final CompilationRepository      compilationRepository;
     private final CompilationeventsRepository compilationeventsRepository;
-    private final EventRepository eventRepository;
+    private final EventRepository             eventRepository;
 
     @Override
     public Collection<CompilationDto> getCompilations(Boolean pinned,
@@ -38,6 +38,7 @@ public class CompilationServiceImpl implements CompilationService {
 
         int pageFrom = from == null ? 0  : from;
         int pageSize = size == null ? 10 : size;
+
         PageRequest page = PageRequest.of(pageFrom > 0 ? pageFrom / pageSize : 0,
                 pageSize);
 
@@ -64,6 +65,7 @@ public class CompilationServiceImpl implements CompilationService {
         Compilation comp = new Compilation();
         comp.setTitle(dto.getTitle());
         comp.setPinned(dto.getPinned() != null && dto.getPinned());
+
         comp = compilationRepository.saveAndFlush(comp);
 
         if (dto.getEvents() != null && !dto.getEvents().isEmpty()) {
@@ -72,8 +74,7 @@ public class CompilationServiceImpl implements CompilationService {
                 throw new EntityNotFoundException();
             }
             for (Event e : events) {
-                compilationeventsRepository.save(
-                        new Compilationevents(0L, comp.getId(), e.getId()));
+                compilationeventsRepository.save(new Compilationevents(0L, comp.getId(), e.getId()));
             }
             comp.setEvents(new ArrayList<>(events));
         } else {
@@ -97,21 +98,26 @@ public class CompilationServiceImpl implements CompilationService {
             comp.setPinned(dto.getPinned());
         }
 
-        if (dto.getEvents() != null && !dto.getEvents().isEmpty()) {
+        if (dto.getEvents() != null) {
+            if (dto.getEvents().isEmpty()) {
+                comp.setEvents(comp.getEvents() == null
+                        ? new ArrayList<>()
+                        : new ArrayList<>(comp.getEvents()));
+            } else {
+                Set<Event> current = new HashSet<>(Optional.ofNullable(comp.getEvents())
+                        .orElse(new ArrayList<>()));
 
-            Set<Event> current = new HashSet<>(comp.getEvents());
-
-            for (Long id : dto.getEvents()) {
-                Event e = eventRepository.findById(id)
-                        .orElseThrow(() -> new NotFoundException("Event id=" + id + " not found"));
-                if (current.contains(e)) {
-                    throw new DataIntegrityViolationException("Event already in compilation");
+                for (Long id : dto.getEvents()) {
+                    Event e = eventRepository.findById(id)
+                            .orElseThrow(() -> new NotFoundException("Event id=" + id + " not found"));
+                    if (current.contains(e)) {
+                        throw new DataIntegrityViolationException("Event already in compilation");
+                    }
+                    current.add(e);
+                    compilationeventsRepository.save(new Compilationevents(0L, comp.getId(), e.getId()));
                 }
-                current.add(e);
-                compilationeventsRepository.save(
-                        new Compilationevents(0L, comp.getId(), e.getId()));
+                comp.setEvents(new ArrayList<>(current));
             }
-            comp.setEvents(new ArrayList<>(current));
         }
 
         Compilation saved = compilationRepository.saveAndFlush(comp);
@@ -122,6 +128,7 @@ public class CompilationServiceImpl implements CompilationService {
     @Transactional
     public void deleteCompilation(long compId) {
         compilationRepository.deleteById(compId);
-        compilationeventsRepository.deleteAll(compilationeventsRepository.findByCompilationId(compId));
+        compilationeventsRepository.deleteAll(
+                compilationeventsRepository.findByCompilationId(compId));
     }
 }
