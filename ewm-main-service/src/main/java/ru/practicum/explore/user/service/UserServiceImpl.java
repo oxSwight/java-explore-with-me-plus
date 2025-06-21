@@ -8,6 +8,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.practicum.explore.common.exception.NotFoundException;
 import ru.practicum.explore.event.model.Event;
 import ru.practicum.explore.event.repository.EventRepository;
 import ru.practicum.explore.global.dto.Statuses;
@@ -17,11 +18,11 @@ import ru.practicum.explore.user.model.Request;
 import ru.practicum.explore.user.model.User;
 import ru.practicum.explore.user.repository.RequestRepository;
 import ru.practicum.explore.user.repository.UserRepository;
-import ru.practicum.explore.user.dto.NewUserDto;
-import ru.practicum.explore.common.exception.NotFoundException;
-import ru.practicum.explore.common.exception.ConflictException;
 
-import java.util.*;
+import java.time.LocalDateTime;
+import java.util.Collection;
+import java.util.List;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -35,15 +36,16 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public Collection<RequestDto> getUserRequests(long userId) {
-        userRepository.findById(userId)
-                .orElseThrow(EntityNotFoundException::new);
+        userRepository.findById(userId).orElseThrow(EntityNotFoundException::new);
         return UserMapperNew.mapToRequestDto(
                 requestRepository.findByRequesterIdOrderByCreatedDateDesc(userId));
     }
 
     @Override
     public Collection<UserDto> getAllUsers(List<Long> ids, Integer from, Integer size) {
-        PageRequest page = PageRequest.of(from > 0 ? from / size : 0, size);
+        int pageFrom = Objects.requireNonNullElse(from, 0);
+        int pageSize = Objects.requireNonNullElse(size, 10);
+        PageRequest page = PageRequest.of(pageFrom > 0 ? pageFrom / pageSize : 0, pageSize);
         if (ids == null || ids.isEmpty()) {
             return UserMapperNew.mapToUserDto(userRepository.findAll(page));
         }
@@ -53,12 +55,14 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public RequestDto cancelRequest(long userId, long requestId) {
-        userRepository.findById(userId)
-                .orElseThrow(EntityNotFoundException::new);
-
-        Request request = requestRepository.findById(requestId)
-                .orElseThrow(EntityNotFoundException::new);
-
+        userRepository.findById(userId).orElseThrow(EntityNotFoundException::new);
+        Request request = requestRepository.findById(requestId).orElseThrow(EntityNotFoundException::new);
+        if (Statuses.CONFIRMED.name().equals(request.getStatus())) {
+            throw new DataIntegrityViolationException("Confirmed request cannot be canceled");
+        }
+        if (Statuses.CANCELED.name().equals(request.getStatus())) {
+            throw new DataIntegrityViolationException("Request already canceled");
+        }
         request.setStatus(Statuses.CANCELED.name());
         return UserMapperNew.mapToRequestDto(requestRepository.saveAndFlush(request));
     }
@@ -75,51 +79,42 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public RequestDto createRequest(long userId, long eventId) {
-
-        /* 1. базовые проверки существования сущностей -------------- */
         Event event = eventRepository.findById(eventId)
-                .orElseThrow(() -> new NotFoundException(
-                        "Событие с id=" + eventId + " не найдено"));
-
+                .orElseThrow(() -> new NotFoundException("Event id=" + eventId + " not found"));
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new NotFoundException(
-                        "Пользователь с id=" + userId + " не найден"));
-        /* 2. бизнес-ограничения ------------------------------------ */
+                .orElseThrow(() -> new NotFoundException("User id=" + userId + " not found"));
         if (requestRepository.findByRequesterIdAndEventId(userId, eventId).isPresent()) {
-            throw new ConflictException("Повторный запрос не допускается");          // 409
+            throw new DataIntegrityViolationException("Duplicate request");
         }
         if (event.getInitiator().getId() == userId) {
-            throw new ConflictException("Инициатор не может подать заявку на своё событие"); // 409
+            throw new DataIntegrityViolationException("Initiator cannot request own event");
         }
         if (!Statuses.PUBLISHED.name().equals(event.getState())) {
-            throw new ConflictException("Нельзя подать заявку на неопубликованное событие"); // 409
+            throw new DataIntegrityViolationException("Event is not published");
         }
         if (event.getParticipantLimit() != 0 &&
                 Objects.equals(event.getConfirmedRequests(), (long) event.getParticipantLimit())) {
-            throw new ConflictException("Лимит участников достигнут");                        // 409
+            throw new DataIntegrityViolationException("Participant limit reached");
         }
-
-        /* 3. создание заявки --------------------------------------- */
-        Request request = new Request();
-        request.setEventId(event.getId());
-        request.setRequesterId(user.getId());
-
+        Request req = new Request();
+        req.setEventId(eventId);
+        req.setRequesterId(userId);
+        req.setCreatedDate(LocalDateTime.now());
         if (Boolean.FALSE.equals(event.getRequestModeration()) || event.getParticipantLimit() == 0) {
-            request.setStatus(Statuses.CONFIRMED.name());
+            req.setStatus(Statuses.CONFIRMED.name());
             event.setConfirmedRequests(event.getConfirmedRequests() + 1);
             eventRepository.save(event);
         } else {
-            request.setStatus(Statuses.PENDING.name());
+            req.setStatus(Statuses.PENDING.name());
         }
-
-        return UserMapperNew.mapToRequestDto(requestRepository.save(request));
+        return UserMapperNew.mapToRequestDto(requestRepository.save(req));
     }
 
     @Override
     @Transactional
     public UserDto createUser(@Valid UserDto dto) {
         if (userRepository.findByEmail(dto.getEmail()).isPresent()) {
-            throw new DataIntegrityViolationException("E-mail уже используется");
+            throw new DataIntegrityViolationException("E-mail already used");
         }
         User saved = userRepository.save(UserMapperNew.mapToUser(dto));
         return UserMapperNew.mapToUserDto(saved);
@@ -128,20 +123,15 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public UserDto createUser(@Valid NewUserDto dto) {
-
-        /* проверка уникальности email */
         if (userRepository.findByEmail(dto.getEmail()).isPresent()) {
-            throw new DataIntegrityViolationException("E-mail уже используется");
+            throw new DataIntegrityViolationException("E-mail already used");
         }
-
-        /* маппинг + сохранение */
         User saved = userRepository.save(UserMapperNew.mapToUser(dto));
         return UserMapperNew.mapToUserDto(saved);
     }
 
     @Override
     public Collection<RequestDto> getEventRequests(long userId, long eventId) {
-        // проверяем, что событие принадлежит пользователю (можно расширить логику при необходимости)
         eventRepository.findByIdAndInitiatorId(eventId, userId)
                 .orElseThrow(EntityNotFoundException::new);
         return UserMapperNew.mapToRequestDto(
@@ -153,40 +143,32 @@ public class UserServiceImpl implements UserService {
     public ResponseInformationAboutRequests changeRequestsStatuses(long userId,
                                                                    long eventId,
                                                                    ChangedStatusOfRequestsDto dto) {
-
         Event event = eventRepository.findByIdAndInitiatorId(eventId, userId)
                 .orElseThrow(EntityNotFoundException::new);
-
         long limit = event.getParticipantLimit();
         long confirmed = event.getConfirmedRequests();
-
         Collection<Request> requests =
                 requestRepository.findByIdInAndEventId(dto.getRequestIds(), eventId);
-
         if (requests.isEmpty()) {
-            throw new DataIntegrityViolationException("Запросы не найдены");
+            throw new DataIntegrityViolationException("Requests not found");
         }
-
         for (Request r : requests) {
             if (!Statuses.PENDING.name().equals(r.getStatus())) {
-                continue;                       // только из PENDING можно менять
+                continue;
             }
-
             if (Statuses.REJECTED.name().equals(dto.getStatus())) {
                 r.setStatus(Statuses.REJECTED.name());
             } else if (Statuses.CONFIRMED.name().equals(dto.getStatus())) {
                 if (limit != 0 && confirmed >= limit) {
-                    throw new DataIntegrityViolationException("Лимит подтверждений достигнут");
+                    throw new DataIntegrityViolationException("Limit reached");
                 }
                 r.setStatus(Statuses.CONFIRMED.name());
                 confirmed++;
             }
             requestRepository.save(r);
         }
-
         event.setConfirmedRequests(confirmed);
         eventRepository.save(event);
-
         ResponseInformationAboutRequests resp = new ResponseInformationAboutRequests();
         resp.setConfirmedRequests(UserMapperNew.mapToRequestDto(
                 requestRepository.findByEventIdAndStatus(eventId, Statuses.CONFIRMED.name())));

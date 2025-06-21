@@ -35,7 +35,7 @@ public class CompilationAdminController {
             @RequestParam(defaultValue = "0")  @PositiveOrZero Integer from,
             @RequestParam(defaultValue = "10") @Positive       Integer size) {
 
-        return service.getCompilations(null, from, size);
+        return service.getCompilations((String) null, from, size);
     }
 
     @PatchMapping("/{compId}")

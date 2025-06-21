@@ -10,6 +10,8 @@ public interface CompilationService {
 
     Collection<CompilationDto> getCompilations(String pinned, Integer from, Integer size);
 
+    Collection<CompilationDto> getCompilations(Boolean pinned, Integer from, Integer size);
+
     CompilationDto changeCompilation(long compId, RequestCompilationDto requestCompilationDto);
 
     void deleteCompilation(long compId);
