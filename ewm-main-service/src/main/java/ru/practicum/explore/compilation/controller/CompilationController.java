@@ -25,8 +25,6 @@ public class CompilationController {
 
     private final CompilationService service;
 
-    /* ---------- public ---------- */
-
     @GetMapping("/{compId}")
     public CompilationDto get(@PathVariable @Positive Long compId) {
         return service.getCompilation(compId);
@@ -38,7 +36,7 @@ public class CompilationController {
             @RequestParam(defaultValue = "0")  @PositiveOrZero Integer from,
             @RequestParam(defaultValue = "10") @Positive       Integer size) {
 
-        return service.getCompilations(String.valueOf(pinned), from, size);
+        return service.getCompilations((pinned), from, size);
     }
 
     @PostMapping("/admin")
