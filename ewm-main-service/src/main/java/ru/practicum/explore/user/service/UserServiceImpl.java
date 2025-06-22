@@ -8,6 +8,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.practicum.explore.common.exception.ConflictException;
 import ru.practicum.explore.common.exception.NotFoundException;
 import ru.practicum.explore.event.model.Event;
 import ru.practicum.explore.event.repository.EventRepository;
@@ -52,17 +53,20 @@ public class UserServiceImpl implements UserService {
         return UserMapperNew.mapToUserDto(userRepository.findAllById(ids));
     }
 
-    @Override
     @Transactional
     public RequestDto cancelRequest(long userId, long requestId) {
+
         userRepository.findById(userId).orElseThrow(EntityNotFoundException::new);
-        Request request = requestRepository.findById(requestId).orElseThrow(EntityNotFoundException::new);
+        Request request = requestRepository.findById(requestId)
+                .orElseThrow(EntityNotFoundException::new);
+
         if (Statuses.CONFIRMED.name().equals(request.getStatus())) {
-            throw new DataIntegrityViolationException("Confirmed request cannot be canceled");
+            throw new ConflictException("Confirmed request cannot be cancelled");
         }
         if (Statuses.CANCELED.name().equals(request.getStatus())) {
-            throw new DataIntegrityViolationException("Request already canceled");
+            throw new ConflictException("Request already cancelled");
         }
+
         request.setStatus(Statuses.CANCELED.name());
         return UserMapperNew.mapToRequestDto(requestRepository.saveAndFlush(request));
     }

@@ -8,6 +8,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.practicum.explore.common.exception.BadRequestException;
 import ru.practicum.explore.common.exception.NotFoundException;
 import ru.practicum.explore.compilation.dto.CompilationDto;
 import ru.practicum.explore.compilation.dto.RequestCompilationDto;
@@ -27,7 +28,7 @@ import java.util.*;
 @Transactional(readOnly = true)
 public class CompilationServiceImpl implements CompilationService {
 
-    private final CompilationRepository      compilationRepository;
+    private final CompilationRepository       compilationRepository;
     private final CompilationeventsRepository compilationeventsRepository;
     private final EventRepository             eventRepository;
 
@@ -62,6 +63,11 @@ public class CompilationServiceImpl implements CompilationService {
     @Override
     @Transactional
     public CompilationDto createCompilation(RequestCompilationDto dto) {
+
+        if (dto.getTitle() == null || dto.getTitle().isBlank()) {
+            throw new BadRequestException("Compilation title is required");
+        }
+
         Compilation comp = new Compilation();
         comp.setTitle(dto.getTitle());
         comp.setPinned(dto.getPinned() != null && dto.getPinned());
@@ -74,7 +80,8 @@ public class CompilationServiceImpl implements CompilationService {
                 throw new EntityNotFoundException();
             }
             for (Event e : events) {
-                compilationeventsRepository.save(new Compilationevents(0L, comp.getId(), e.getId()));
+                compilationeventsRepository.save(
+                        new Compilationevents(0L, comp.getId(), e.getId()));
             }
             comp.setEvents(new ArrayList<>(events));
         } else {
@@ -109,12 +116,14 @@ public class CompilationServiceImpl implements CompilationService {
 
                 for (Long id : dto.getEvents()) {
                     Event e = eventRepository.findById(id)
-                            .orElseThrow(() -> new NotFoundException("Event id=" + id + " not found"));
+                            .orElseThrow(() ->
+                                    new NotFoundException("Event id=" + id + " not found"));
                     if (current.contains(e)) {
                         throw new DataIntegrityViolationException("Event already in compilation");
                     }
                     current.add(e);
-                    compilationeventsRepository.save(new Compilationevents(0L, comp.getId(), e.getId()));
+                    compilationeventsRepository.save(
+                            new Compilationevents(0L, comp.getId(), e.getId()));
                 }
                 comp.setEvents(new ArrayList<>(current));
             }

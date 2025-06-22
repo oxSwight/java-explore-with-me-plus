@@ -67,7 +67,7 @@ public class EventServiceImpl implements EventService {
                                                          Integer size) {
 
         int pageFrom = from == null ? 0  : from;
-        int pageSize = (size == null || size <= 0) ? 10 : size;   // ← size ≥ 1
+        int pageSize = (size == null || size <= 0) ? 10 : size;
 
         PageRequest page = PageRequest.of(pageFrom > 0 ? pageFrom / pageSize : 0, pageSize);
 
@@ -86,7 +86,7 @@ public class EventServiceImpl implements EventService {
                 .orElseThrow(EntityNotFoundException::new);
 
         if (Statuses.PUBLISHED.name().equals(stored.getState())) {
-            throw new ConflictException("Cannot modify published event");   // 409
+            throw new ConflictException("Cannot modify published event");
         }
 
         if (patch.getEventDate() != null) {
@@ -175,29 +175,32 @@ public class EventServiceImpl implements EventService {
         boolean isPaid     = Boolean.TRUE.equals(paid);
         boolean onlyAvail  = Boolean.TRUE.equals(onlyAvailable);
 
+        /* пагинация */
         int pageFrom = from == null ? 0 : from;
-        int pageSize = (size == null || size <= 0) ? 10 : size;   // ← size ≥ 1
+        int pageSize = (size == null || size <= 0) ? 10 : size;
         PageRequest page = PageRequest.of(pageFrom / pageSize, pageSize);
+
+        LocalDateTime start = rangeStart != null ? rangeStart : LocalDateTime.now();
+        LocalDateTime end   = rangeEnd   != null ? rangeEnd   : start.plusYears(100);
 
         List<ResponseEventDto> result = new ArrayList<>();
 
         if (byText) {
-
-            if (!cats.isEmpty()) {   // ← корректная проверка наличия категорий
+            if (!cats.isEmpty()) {
                 /* text + categories */
                 if (onlyAvail) {
                     if (isPaid) {
                         result.addAll(EventMapperNew.mapToResponseEventDto(
                                 eventRepository
                                         .findByPaidAndEventDateGreaterThanEqualAndEventDateLessThanEqualAndParticipantLimitNotNullAndStateAndAnnotationIgnoreCaseOrDescriptionIgnoreCaseAndCategoryIdIn(
-                                                true, rangeStart, rangeEnd,
+                                                true, start, end,
                                                 Statuses.PUBLISHED.name(),
                                                 qText, qText, cats, page)));
                     } else {
                         result.addAll(EventMapperNew.mapToResponseEventDto(
                                 eventRepository
                                         .findByEventDateGreaterThanEqualAndEventDateLessThanEqualAndParticipantLimitNotNullAndStateAndAnnotationIgnoreCaseOrDescriptionIgnoreCaseAndCategoryIdIn(
-                                                rangeStart, rangeEnd,
+                                                start, end,
                                                 Statuses.PUBLISHED.name(),
                                                 qText, qText, cats, page)));
                     }
@@ -206,33 +209,33 @@ public class EventServiceImpl implements EventService {
                         result.addAll(EventMapperNew.mapToResponseEventDto(
                                 eventRepository
                                         .findByPaidAndEventDateGreaterThanEqualAndEventDateLessThanEqualAndStateAndAnnotationIgnoreCaseOrDescriptionIgnoreCaseAndCategoryIdIn(
-                                                true, rangeStart, rangeEnd,
+                                                true, start, end,
                                                 Statuses.PUBLISHED.name(),
                                                 qText, qText, cats, page)));
                     } else {
                         result.addAll(EventMapperNew.mapToResponseEventDto(
                                 eventRepository
                                         .findByEventDateGreaterThanEqualAndEventDateLessThanEqualAndStateAndAnnotationIgnoreCaseOrDescriptionIgnoreCaseAndCategoryIdIn(
-                                                rangeStart, rangeEnd,
+                                                start, end,
                                                 Statuses.PUBLISHED.name(),
                                                 qText, qText, cats, page)));
                     }
                 }
 
-            } else {
+            } else { /* text без категорий */
                 if (onlyAvail) {
                     if (isPaid) {
                         result.addAll(EventMapperNew.mapToResponseEventDto(
                                 eventRepository
                                         .findByPaidAndEventDateGreaterThanEqualAndEventDateLessThanEqualAndParticipantLimitNotNullAndStateAndAnnotationIgnoreCaseOrDescriptionIgnoreCase(
-                                                true, rangeStart, rangeEnd,
+                                                true, start, end,
                                                 Statuses.PUBLISHED.name(),
                                                 qText, qText, page)));
                     } else {
                         result.addAll(EventMapperNew.mapToResponseEventDto(
                                 eventRepository
                                         .findByEventDateGreaterThanEqualAndEventDateLessThanEqualAndParticipantLimitNotNullAndStateAndAnnotationIgnoreCaseOrDescriptionIgnoreCase(
-                                                rangeStart, rangeEnd,
+                                                start, end,
                                                 Statuses.PUBLISHED.name(),
                                                 qText, qText, page)));
                     }
@@ -241,14 +244,14 @@ public class EventServiceImpl implements EventService {
                         result.addAll(EventMapperNew.mapToResponseEventDto(
                                 eventRepository
                                         .findByPaidAndEventDateGreaterThanEqualAndEventDateLessThanEqualAndStateAndAnnotationIgnoreCaseOrDescriptionIgnoreCase(
-                                                true, rangeStart, rangeEnd,
+                                                true, start, end,
                                                 Statuses.PUBLISHED.name(),
                                                 qText, qText, page)));
                     } else {
                         result.addAll(EventMapperNew.mapToResponseEventDto(
                                 eventRepository
                                         .findByEventDateGreaterThanEqualAndEventDateLessThanEqualAndStateAndAnnotationIgnoreCaseOrDescriptionIgnoreCase(
-                                                rangeStart, rangeEnd,
+                                                start, end,
                                                 Statuses.PUBLISHED.name(),
                                                 qText, qText, page)));
                     }
@@ -257,20 +260,20 @@ public class EventServiceImpl implements EventService {
 
         } else {
 
-            if (!cats.isEmpty()) {   // категории без текста
+            if (!cats.isEmpty()) {   /* категории без текста */
                 if (onlyAvail) {
                     if (isPaid) {
                         result.addAll(EventMapperNew.mapToResponseEventDto(
                                 eventRepository
                                         .findByPaidAndEventDateGreaterThanEqualAndEventDateLessThanEqualAndParticipantLimitNotNullAndStateAndCategoryIdIn(
-                                                true, rangeStart, rangeEnd,
+                                                true, start, end,
                                                 Statuses.PUBLISHED.name(),
                                                 cats, page)));
                     } else {
                         result.addAll(EventMapperNew.mapToResponseEventDto(
                                 eventRepository
                                         .findByEventDateGreaterThanEqualAndEventDateLessThanEqualAndParticipantLimitNotNullAndStateAndCategoryIdIn(
-                                                rangeStart, rangeEnd,
+                                                start, end,
                                                 Statuses.PUBLISHED.name(),
                                                 cats, page)));
                     }
@@ -279,33 +282,33 @@ public class EventServiceImpl implements EventService {
                         result.addAll(EventMapperNew.mapToResponseEventDto(
                                 eventRepository
                                         .findByPaidAndEventDateGreaterThanEqualAndEventDateLessThanEqualAndStateAndCategoryIdIn(
-                                                true, rangeStart, rangeEnd,
+                                                true, start, end,
                                                 Statuses.PUBLISHED.name(),
                                                 cats, page)));
                     } else {
                         result.addAll(EventMapperNew.mapToResponseEventDto(
                                 eventRepository
                                         .findByEventDateGreaterThanEqualAndEventDateLessThanEqualAndStateAndCategoryIdIn(
-                                                rangeStart, rangeEnd,
+                                                start, end,
                                                 Statuses.PUBLISHED.name(),
                                                 cats, page)));
                     }
                 }
 
-            } else {
+            } else { /* ни текста, ни категорий */
                 if (onlyAvail) {
                     if (isPaid) {
                         result.addAll(EventMapperNew.mapToResponseEventDto(
                                 eventRepository
                                         .findByPaidAndEventDateGreaterThanEqualAndEventDateLessThanEqualAndParticipantLimitNotNullAndState(
-                                                true, rangeStart, rangeEnd,
+                                                true, start, end,
                                                 Statuses.PUBLISHED.name(),
                                                 page)));
                     } else {
                         result.addAll(EventMapperNew.mapToResponseEventDto(
                                 eventRepository
                                         .findByEventDateGreaterThanEqualAndEventDateLessThanEqualAndParticipantLimitNotNullAndState(
-                                                rangeStart, rangeEnd,
+                                                start, end,
                                                 Statuses.PUBLISHED.name(),
                                                 page)));
                     }
@@ -314,14 +317,14 @@ public class EventServiceImpl implements EventService {
                         result.addAll(EventMapperNew.mapToResponseEventDto(
                                 eventRepository
                                         .findByPaidAndEventDateGreaterThanEqualAndEventDateLessThanEqualAndState(
-                                                true, rangeStart, rangeEnd,
+                                                true, start, end,
                                                 Statuses.PUBLISHED.name(),
                                                 page)));
                     } else {
                         result.addAll(EventMapperNew.mapToResponseEventDto(
                                 eventRepository
                                         .findByEventDateGreaterThanEqualAndEventDateLessThanEqualAndState(
-                                                rangeStart, rangeEnd,
+                                                start, end,
                                                 Statuses.PUBLISHED.name(),
                                                 page)));
                     }
@@ -329,7 +332,8 @@ public class EventServiceImpl implements EventService {
             }
         }
 
-        if (SortValues.VIEWS.name().equals(sort)) {         // ← правильно используем параметр sort
+        /* ---------- сортировка ---------- */
+        if (sort != null && SortValues.VIEWS.name().equals(sort)) {
             result.sort(Comparator.comparing(ResponseEventDto::getViews).reversed());
         } else {
             result.sort(Comparator.comparing(ResponseEventDto::getEventDate).reversed());
@@ -376,6 +380,35 @@ public class EventServiceImpl implements EventService {
                 .mapToResponseEventDto(eventRepository.saveAndFlush(updated));
     }
 
+    @Transactional
+    public ResponseEventDto publishEventByAdmin(long eventId) {
+        Event event = eventRepository.findById(eventId)
+                .orElseThrow(EntityNotFoundException::new);
+
+        if (Statuses.PUBLISHED.name().equals(event.getState())
+                || Statuses.CANCELED.name().equals(event.getState())) {
+            throw new ConflictException("Event cannot be published");
+        }
+
+        event.setState(Statuses.PUBLISHED.name());
+        event.setPublishedOn(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS));
+
+        return EventMapperNew.mapToResponseEventDto(eventRepository.saveAndFlush(event));
+    }
+
+    @Transactional
+    public ResponseEventDto cancelEventByAdmin(long eventId) {
+        Event event = eventRepository.findById(eventId)
+                .orElseThrow(EntityNotFoundException::new);
+
+        if (Statuses.PUBLISHED.name().equals(event.getState())) {
+            throw new ConflictException("Published event cannot be cancelled");
+        }
+
+        event.setState(Statuses.CANCELED.name());
+        return EventMapperNew.mapToResponseEventDto(eventRepository.saveAndFlush(event));
+    }
+
     @Override
     public Collection<ResponseEventDto> findEventsByAdmin(List<Long> users,
                                                           List<String> states,
@@ -390,37 +423,40 @@ public class EventServiceImpl implements EventService {
         List<Long>   cats  = categories == null || categories.isEmpty() ? List.of(0L) : categories;
 
         int pageFrom = from == null ? 0 : from;
-        int pageSize = (size == null || size <= 0) ? 10 : size;        // ← size ≥ 1
+        int pageSize = (size == null || size <= 0) ? 10 : size;
         PageRequest page = PageRequest
                 .of(pageFrom > 0 ? pageFrom / pageSize : 0, pageSize);
 
+        LocalDateTime start = rangeStart != null ? rangeStart : LocalDateTime.MIN;
+        LocalDateTime end   = rangeEnd   != null ? rangeEnd   : LocalDateTime.MAX;
+
         List<ResponseEventDto> result = new ArrayList<>();
 
-        /* — каскад условных отборов (логика без изменений) — */
+        /* логика выборки без изменений, только start/end вместо raw-параметров */
         if (!ids.equals(List.of(0L))) {
             if (!st.equals(List.of("0"))) {
                 if (!cats.equals(List.of(0L))) {
                     result.addAll(EventMapperNew
                             .mapToResponseEventDto(eventRepository
                                     .findByInitiatorIdInAndStateInAndCategoryIdInAndEventDateGreaterThanEqualAndEventDateLessThanEqual(
-                                            ids, st, cats, rangeStart, rangeEnd, page)));
+                                            ids, st, cats, start, end, page)));
                 } else {
                     result.addAll(EventMapperNew
                             .mapToResponseEventDto(eventRepository
                                     .findByInitiatorIdInAndStateInAndEventDateGreaterThanEqualAndEventDateLessThanEqual(
-                                            ids, st, rangeStart, rangeEnd, page)));
+                                            ids, st, start, end, page)));
                 }
             } else {
                 if (!cats.equals(List.of(0L))) {
                     result.addAll(EventMapperNew
                             .mapToResponseEventDto(eventRepository
                                     .findByInitiatorIdInAndCategoryIdInAndEventDateGreaterThanEqualAndEventDateLessThanEqual(
-                                            ids, cats, rangeStart, rangeEnd, page)));
+                                            ids, cats, start, end, page)));
                 } else {
                     result.addAll(EventMapperNew
                             .mapToResponseEventDto(eventRepository
                                     .findByInitiatorIdInAndEventDateGreaterThanEqualAndEventDateLessThanEqual(
-                                            ids, rangeStart, rangeEnd, page)));
+                                            ids, start, end, page)));
                 }
             }
         } else {
@@ -429,24 +465,24 @@ public class EventServiceImpl implements EventService {
                     result.addAll(EventMapperNew
                             .mapToResponseEventDto(eventRepository
                                     .findByStateInAndCategoryIdInAndEventDateGreaterThanEqualAndEventDateLessThanEqual(
-                                            st, cats, rangeStart, rangeEnd, page)));
+                                            st, cats, start, end, page)));
                 } else {
                     result.addAll(EventMapperNew
                             .mapToResponseEventDto(eventRepository
                                     .findByStateInAndEventDateGreaterThanEqualAndEventDateLessThanEqual(
-                                            st, rangeStart, rangeEnd, page)));
+                                            st, start, end, page)));
                 }
             } else {
                 if (!cats.equals(List.of(0L))) {
                     result.addAll(EventMapperNew
                             .mapToResponseEventDto(eventRepository
                                     .findByCategoryIdInAndEventDateGreaterThanEqualAndEventDateLessThanEqual(
-                                            cats, rangeStart, rangeEnd, page)));
+                                            cats, start, end, page)));
                 } else {
                     result.addAll(EventMapperNew
                             .mapToResponseEventDto(eventRepository
                                     .findByEventDateGreaterThanEqualAndEventDateLessThanEqual(
-                                            rangeStart, rangeEnd, page)));
+                                            start, end, page)));
                 }
             }
         }
@@ -575,7 +611,7 @@ public class EventServiceImpl implements EventService {
                     throw new ConflictException("Event cannot be published");
                 }
                 updated.setState(Statuses.PUBLISHED.name());
-                updated.setPublishedOn(LocalDateTime.now());
+                updated.setPublishedOn(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS));
             }
 
             default -> updated.setState(prevState);

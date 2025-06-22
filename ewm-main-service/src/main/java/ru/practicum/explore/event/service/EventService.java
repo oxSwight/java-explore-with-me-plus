@@ -34,10 +34,12 @@ public interface EventService {
                                                   Integer from,
                                                   Integer size);
 
-    /** Изменение события администратором */
     ResponseEventDto changeEventByAdmin(long eventId, PatchEventDto patchEventDto);
 
-    /** Расширенный поиск админом (древний метод) */
+    ResponseEventDto publishEventByAdmin(long eventId);
+
+    ResponseEventDto cancelEventByAdmin(long eventId);
+
     Collection<ResponseEventDto> findEventsByAdmin(List<Long> users,
                                                    List<String> states,
                                                    List<Long> categories,
@@ -46,12 +48,10 @@ public interface EventService {
                                                    Integer from,
                                                    Integer size);
 
-
     Collection<ResponseEventDto> getUserEvents(long userId, int from, int size);
 
     ResponseEventDto getUserEventById(long userId, long eventId);
 
-    /* PUBLIC API */
     Collection<ResponseEventDto> findEvents(String text,
                                             List<Long> categories,
                                             Boolean paid,
@@ -73,6 +73,5 @@ public interface EventService {
                                                  Integer from,
                                                  Integer size);
 
-    /* Создание события через NewEventDto (POST /users/{userId}/events) */
     ResponseEventDto createEvent(long userId, NewEventDto newEventDto);
 }
