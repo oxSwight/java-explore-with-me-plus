@@ -51,7 +51,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorMessage> handleConflict(Exception ex) {
         log.debug("409 CONFLICT: {}", ex.getMessage());
         return build(HttpStatus.CONFLICT,
-                "Integrity constraint violated", ex.getMessage(), List.of());
+                "Conflict", ex.getMessage(), List.of());
     }
 
     @ExceptionHandler(Throwable.class)

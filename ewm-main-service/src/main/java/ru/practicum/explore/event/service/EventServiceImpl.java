@@ -355,40 +355,55 @@ public class EventServiceImpl implements EventService {
     @Override
     @Transactional
     public ResponseEventDto changeEventByAdmin(long eventId, PatchEventDto patch) {
-
         Event stored = eventRepository.findById(eventId)
-                .orElseThrow(EntityNotFoundException::new);
+                .orElseThrow(() -> new NotFoundException("Event not found"));
 
+        // Валидация даты события
         if (patch.getEventDate() != null) {
             validateFutureDate(patch.getEventDate());
+            stored.setEventDate(patch.getEventDate());
         }
 
-        Category category = null;
+        // Обновление категории
         if (patch.getCategory() != null) {
-            category = categoryRepository
-                    .findById(patch.getCategory())
+            Category category = categoryRepository.findById(patch.getCategory())
                     .orElseThrow(() -> new NotFoundException("Category not found"));
+            stored.setCategory(category);
         }
 
-        Location location = null;
+        // Обновление локации
         if (patch.getLocation() != null) {
-            location = locationRepository
-                    .saveAndFlush(EventMapperNew.mapToLocation(patch.getLocation()));
+            Location location = locationRepository.save(
+                    EventMapperNew.mapToLocation(patch.getLocation()));
+            stored.setLocation(location);
         }
 
-        Event updated = EventMapperNew.changeEvent(stored, patch);
-
-        if (category != null) {
-            updated.setCategory(category);
+        // Применение изменений из DTO в сущность (ваш текущий подход)
+        if (patch.getAnnotation() != null) {
+            stored.setAnnotation(patch.getAnnotation());
         }
-        if (location != null) {
-            updated.setLocation(location);
+        if (patch.getDescription() != null) {
+            stored.setDescription(patch.getDescription());
+        }
+        if (patch.getPaid() != null) {
+            stored.setPaid(patch.getPaid());
+        }
+        if (patch.getParticipantLimit() != null) {
+            stored.setParticipantLimit(patch.getParticipantLimit());
+        }
+        if (patch.getRequestModeration() != null) {
+            stored.setRequestModeration(patch.getRequestModeration());
+        }
+        if (patch.getTitle() != null) {
+            stored.setTitle(patch.getTitle());
         }
 
-        applyStateAction(patch.getStateAction(), stored.getState(), updated);
+        // Обработка изменения состояния
+        applyStateAction(patch.getStateAction(), stored.getState(), stored);
 
-        return EventMapperNew
-                .mapToResponseEventDto(eventRepository.saveAndFlush(updated));
+        // Сохранение и возврат результата
+        Event updatedEvent = eventRepository.save(stored);
+        return EventMapperNew.mapToResponseEventDto(updatedEvent);
     }
 
     @Transactional
@@ -610,21 +625,12 @@ public class EventServiceImpl implements EventService {
 
     private void applyStateAction(String stateAction, String prevState, Event updated) {
         if (stateAction == null) {
-            updated.setState(prevState);
-            return;
+            return; // Состояние не меняем
         }
+
         try {
             switch (stateAction) {
-                case "SEND_TO_REVIEW" -> updated.setState(Statuses.PENDING.name());
-
-                case "CANCEL_REVIEW", "REJECT_EVENT" -> {
-                    if (Statuses.PUBLISHED.name().equals(prevState)) {
-                        throw new ConflictException("Cannot cancel published event");
-                    }
-                    updated.setState(Statuses.CANCELED.name());
-                }
-
-                case "PUBLISH_EVENT" -> {
+                case "PUBLISH_EVENT":
                     if (Statuses.PUBLISHED.name().equals(prevState)) {
                         throw new ConflictException("Event already published");
                     }
@@ -632,13 +638,26 @@ public class EventServiceImpl implements EventService {
                         throw new ConflictException("Cannot publish canceled event");
                     }
                     updated.setState(Statuses.PUBLISHED.name());
-                    updated.setPublishedOn(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS));
-                }
+                    updated.setPublishedOn(LocalDateTime.now());
+                    break;
 
-                default -> updated.setState(prevState);
+                case "CANCEL_REVIEW":
+                case "REJECT_EVENT":
+                    if (Statuses.PUBLISHED.name().equals(prevState)) {
+                        throw new ConflictException("Cannot cancel published event");
+                    }
+                    updated.setState(Statuses.CANCELED.name());
+                    break;
+
+                case "SEND_TO_REVIEW":
+                    updated.setState(Statuses.PENDING.name());
+                    break;
+
+                default:
+                    log.warn("Unknown state action: {}", stateAction);
             }
         } catch (IllegalArgumentException e) {
-            throw new ConflictException("Неизвестный статус события: " + prevState);
+            throw new ConflictException("Invalid event state: " + prevState);
         }
     }
 
