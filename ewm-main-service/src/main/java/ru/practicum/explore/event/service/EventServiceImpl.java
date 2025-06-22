@@ -610,33 +610,26 @@ public class EventServiceImpl implements EventService {
             updated.setState(prevState);
             return;
         }
-
         switch (stateAction) {
-            case "SEND_TO_REVIEW":
-                if (!Statuses.PENDING.name().equals(prevState)) {
-                    throw new ConflictException("Event must be in PENDING state");
-                }
-                updated.setState(Statuses.PENDING.name());
-                break;
+            case "SEND_TO_REVIEW" -> updated.setState(Statuses.PENDING.name());
 
-            case "CANCEL_REVIEW":
-            case "REJECT_EVENT":
+            case "CANCEL_REVIEW", "REJECT_EVENT" -> {
                 if (Statuses.PUBLISHED.name().equals(prevState)) {
-                    throw new ConflictException("Cannot cancel published event");
+                    throw new ConflictException("Event already published");
                 }
                 updated.setState(Statuses.CANCELED.name());
-                break;
+            }
 
-            case "PUBLISH_EVENT":
-                if (!Statuses.PENDING.name().equals(prevState)) {
-                    throw new ConflictException("Only pending events can be published");
+            case "PUBLISH_EVENT" -> {
+                if (Statuses.PUBLISHED.name().equals(prevState)
+                        || Statuses.CANCELED.name().equals(prevState)) {
+                    throw new ConflictException("Event cannot be published");
                 }
                 updated.setState(Statuses.PUBLISHED.name());
-                updated.setPublishedOn(LocalDateTime.now());
-                break;
+                updated.setPublishedOn(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS));
+            }
 
-            default:
-                updated.setState(prevState);
+            default -> updated.setState(prevState);
         }
     }
 
