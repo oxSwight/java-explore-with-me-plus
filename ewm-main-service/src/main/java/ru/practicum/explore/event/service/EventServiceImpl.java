@@ -4,6 +4,7 @@ import jakarta.persistence.EntityNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,6 +29,7 @@ import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -66,11 +68,19 @@ public class EventServiceImpl implements EventService {
                                                          Integer from,
                                                          Integer size) {
 
-        int pageFrom = from == null ? 0 : from;
-        int pageSize = size == null ? 10 : size; // Не заменяем size=0!
+        //int pageFrom = from == null ? 0 : from;
+        //int pageSize = size == null ? 10 : size; // Не заменяем size=0!
+        //int pageSize = (size == null || size <= 0) ? 10 : size;
+        //PageRequest page = PageRequest.of(pageFrom > 0 ? pageFrom / pageSize : 0, pageSize);
+        //PageRequest page = PageRequest.of(pageFrom, pageSize); // Простая пагинация
+        //return EventMapperNew.mapToResponseEventDto(eventRepository.findByInitiatorId(userId, page));
+        PageRequest pageRequest = createPageRequest(from, size);
+        Page<Event> eventsPage = eventRepository.findByInitiatorId(userId, pageRequest);
 
-        PageRequest page = PageRequest.of(pageFrom, pageSize); // Простая пагинация
-        return EventMapperNew.mapToResponseEventDto(eventRepository.findByInitiatorId(userId, page));
+        return eventsPage.getContent()
+                .stream()
+                .map(EventMapperNew::mapToResponseEventDto)
+                .collect(Collectors.toList());
     }
 
     @Override
@@ -614,5 +624,11 @@ public class EventServiceImpl implements EventService {
 
             default -> updated.setState(prevState);
         }
+    }
+
+    private PageRequest createPageRequest(Integer from, Integer size) {
+        int pageNumber = from == null ? 0 : Math.max(from, 0);
+        int pageSize = size == null ? 10 : Math.max(size, 0);
+        return PageRequest.of(pageNumber, pageSize);
     }
 }
