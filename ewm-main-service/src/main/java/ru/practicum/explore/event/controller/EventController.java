@@ -117,12 +117,12 @@ public class EventController {
         return ResponseEntity.ok(eventService.changeEventByAdmin(eventId, dto));
     }
 
-    @PostMapping("/admin/events/{eventId}/publish")
+    @PatchMapping("/admin/events/{eventId}/publish")
     public ResponseEntity<ResponseEventDto> publishEvent(@PathVariable long eventId) {
         return ResponseEntity.ok(eventService.publishEventByAdmin(eventId));
     }
 
-    @PostMapping("/admin/events/{eventId}/cancel")
+    @PatchMapping("/admin/events/{eventId}/cancel")
     public ResponseEntity<ResponseEventDto> cancelEvent(@PathVariable long eventId) {
         return ResponseEntity.ok(eventService.cancelEventByAdmin(eventId));
     }

@@ -60,10 +60,10 @@ public class UserServiceImpl implements UserService {
         Request request = requestRepository.findById(requestId)
                 .orElseThrow(EntityNotFoundException::new);
 
-        if (Statuses.CONFIRMED.name().equals(request.getStatus())) {
+        if (request.getStatus().trim().equals(Statuses.CONFIRMED.name())) {
             throw new ConflictException("Confirmed request cannot be cancelled");
         }
-        if (Statuses.CANCELED.name().equals(request.getStatus())) {
+        if (request.getStatus().trim().equals(Statuses.CANCELED.name())) {
             throw new ConflictException("Request already cancelled");
         }
 
