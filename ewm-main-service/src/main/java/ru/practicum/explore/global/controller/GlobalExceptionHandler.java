@@ -14,6 +14,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import ru.practicum.explore.common.exception.BadRequestException;
+import ru.practicum.explore.common.exception.ConflictException;
 import ru.practicum.explore.common.exception.NotFoundException;
 import ru.practicum.explore.global.dto.ErrorMessage;
 
@@ -46,7 +47,7 @@ public class GlobalExceptionHandler {
                 "Entity not found", ex.getMessage(), List.of());
     }
 
-    @ExceptionHandler({DataIntegrityViolationException.class, IllegalStateException.class})
+    @ExceptionHandler({DataIntegrityViolationException.class, IllegalStateException.class, ConflictException.class})
     public ResponseEntity<ErrorMessage> handleConflict(Exception ex) {
         log.debug("409 CONFLICT: {}", ex.getMessage());
         return build(HttpStatus.CONFLICT,
