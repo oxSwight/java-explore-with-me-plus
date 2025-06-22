@@ -4,13 +4,13 @@ import jakarta.persistence.EntityNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.practicum.explore.category.model.Category;
 import ru.practicum.explore.category.repository.CategoryRepository;
 import ru.practicum.explore.common.exception.BadRequestException;
+import ru.practicum.explore.common.exception.ConflictException;
 import ru.practicum.explore.common.exception.NotFoundException;
 import ru.practicum.explore.event.dto.*;
 import ru.practicum.explore.event.mapper.EventMapperNew;
@@ -35,10 +35,10 @@ import java.util.concurrent.ConcurrentHashMap;
 @Transactional(readOnly = true)
 public class EventServiceImpl implements EventService {
 
-    private final UserRepository        userRepository;
-    private final EventRepository       eventRepository;
-    private final CategoryRepository    categoryRepository;
-    private final LocationRepository    locationRepository;
+    private final UserRepository     userRepository;
+    private final EventRepository    eventRepository;
+    private final CategoryRepository categoryRepository;
+    private final LocationRepository locationRepository;
 
     private static final Map<Long, Set<String>> VIEWS_IP_CACHE = new ConcurrentHashMap<>();
 
@@ -65,11 +65,11 @@ public class EventServiceImpl implements EventService {
     public Collection<ResponseEventDto> getAllUserEvents(long userId,
                                                          Integer from,
                                                          Integer size) {
-        int pageFrom = from == null ? 0 : from;
-        int pageSize = size == null ? 10 : size;
 
-        PageRequest page = PageRequest.of(pageFrom > 0 ? pageFrom / pageSize : 0,
-                pageSize);
+        int pageFrom = from == null ? 0  : from;
+        int pageSize = (size == null || size <= 0) ? 10 : size;   // ← size ≥ 1
+
+        PageRequest page = PageRequest.of(pageFrom > 0 ? pageFrom / pageSize : 0, pageSize);
 
         return EventMapperNew
                 .mapToResponseEventDto(eventRepository.findByInitiatorId(userId, page));
@@ -86,7 +86,7 @@ public class EventServiceImpl implements EventService {
                 .orElseThrow(EntityNotFoundException::new);
 
         if (Statuses.PUBLISHED.name().equals(stored.getState())) {
-            throw new DataIntegrityViolationException("Cannot modify published event");
+            throw new ConflictException("Cannot modify published event");   // 409
         }
 
         if (patch.getEventDate() != null) {
@@ -168,25 +168,23 @@ public class EventServiceImpl implements EventService {
                                                          Integer from,
                                                          Integer size) {
 
-        String  qText       = text         == null ? ""   : text.trim();
-        List<Long> cats     = categories   == null || categories.isEmpty()
-                ? List.of(0L) : categories;
-        boolean  isPaid     = Boolean.TRUE.equals(paid);
-        boolean  onlyAvail  = Boolean.TRUE.equals(onlyAvailable);
-        int pageFrom = from == null ? 0 : from;
-        int pageSize = (size == null || size <= 0) ? 10 : size;
-        String   sortMode   = sort         == null ? SortValues.EVENT_DATE.name()
-                : sort.toUpperCase();
+        String  qText      = text == null ? "" : text.trim();
+        boolean byText     = !qText.isBlank();
+        boolean byCats     = categories != null && !categories.isEmpty();
+        List<Long> cats    = byCats ? categories : List.of();
+        boolean isPaid     = Boolean.TRUE.equals(paid);
+        boolean onlyAvail  = Boolean.TRUE.equals(onlyAvailable);
 
-        PageRequest page = PageRequest.of(pageFrom > 0 ? pageFrom / pageSize : 0,
-                pageSize);
+        int pageFrom = from == null ? 0 : from;
+        int pageSize = (size == null || size <= 0) ? 10 : size;   // ← size ≥ 1
+        PageRequest page = PageRequest.of(pageFrom / pageSize, pageSize);
 
         List<ResponseEventDto> result = new ArrayList<>();
 
-        if (!qText.isBlank()) {
+        if (byText) {
 
-            if (!cats.equals(List.of(0L))) {
-
+            if (!cats.isEmpty()) {   // ← корректная проверка наличия категорий
+                /* text + categories */
                 if (onlyAvail) {
                     if (isPaid) {
                         result.addAll(EventMapperNew.mapToResponseEventDto(
@@ -259,8 +257,7 @@ public class EventServiceImpl implements EventService {
 
         } else {
 
-            if (!cats.equals(List.of(0L))) {
-
+            if (!cats.isEmpty()) {   // категории без текста
                 if (onlyAvail) {
                     if (isPaid) {
                         result.addAll(EventMapperNew.mapToResponseEventDto(
@@ -332,8 +329,7 @@ public class EventServiceImpl implements EventService {
             }
         }
 
-        /* сортировка */
-        if (SortValues.VIEWS.name().equals(sortMode)) {
+        if (SortValues.VIEWS.name().equals(sort)) {         // ← правильно используем параметр sort
             result.sort(Comparator.comparing(ResponseEventDto::getViews).reversed());
         } else {
             result.sort(Comparator.comparing(ResponseEventDto::getEventDate).reversed());
@@ -345,8 +341,7 @@ public class EventServiceImpl implements EventService {
     @Transactional
     public ResponseEventDto changeEventByAdmin(long eventId, PatchEventDto patch) {
 
-        Event stored = eventRepository
-                .findById(eventId)
+        Event stored = eventRepository.findById(eventId)
                 .orElseThrow(EntityNotFoundException::new);
 
         if (patch.getEventDate() != null) {
@@ -390,18 +385,18 @@ public class EventServiceImpl implements EventService {
                                                           Integer from,
                                                           Integer size) {
 
-        List<Long>      ids      = users      == null || users.isEmpty()      ? List.of(0L) : users;
-        List<String>    st       = states     == null || states.isEmpty()     ? List.of("0") : states;
-        List<Long>      cats     = categories == null || categories.isEmpty() ? List.of(0L) : categories;
-        int             pageFrom = from == null ? 0  : from;
-        int             pageSize = size == null ? 10 : size;
+        List<Long>   ids   = users      == null || users.isEmpty()      ? List.of(0L) : users;
+        List<String> st    = states     == null || states.isEmpty()     ? List.of("0") : states;
+        List<Long>   cats  = categories == null || categories.isEmpty() ? List.of(0L) : categories;
 
+        int pageFrom = from == null ? 0 : from;
+        int pageSize = (size == null || size <= 0) ? 10 : size;        // ← size ≥ 1
         PageRequest page = PageRequest
                 .of(pageFrom > 0 ? pageFrom / pageSize : 0, pageSize);
 
         List<ResponseEventDto> result = new ArrayList<>();
 
-        /* (каскад условий не изменён, просто использует ids/st/cats вместо raw-параметров) */
+        /* — каскад условных отборов (логика без изменений) — */
         if (!ids.equals(List.of(0L))) {
             if (!st.equals(List.of("0"))) {
                 if (!cats.equals(List.of(0L))) {
@@ -487,15 +482,8 @@ public class EventServiceImpl implements EventService {
         if (rangeStart != null && rangeEnd != null && rangeEnd.isBefore(rangeStart)) {
             throw new BadRequestException("rangeEnd must be after rangeStart");
         }
-        return findEventsByUser(text,
-                categories,
-                paid,
-                rangeStart,
-                rangeEnd,
-                onlyAvailable,
-                sort,
-                from,
-                size);
+        return findEventsByUser(text, categories, paid, rangeStart, rangeEnd,
+                onlyAvailable, sort, from, size);
     }
 
     @Override
@@ -573,19 +561,23 @@ public class EventServiceImpl implements EventService {
         }
         switch (stateAction) {
             case "SEND_TO_REVIEW" -> updated.setState(Statuses.PENDING.name());
+
             case "CANCEL_REVIEW", "REJECT_EVENT" -> {
                 if (Statuses.PUBLISHED.name().equals(prevState)) {
-                    throw new DataIntegrityViolationException("Event already published");
+                    throw new ConflictException("Event already published");
                 }
                 updated.setState(Statuses.CANCELED.name());
             }
+
             case "PUBLISH_EVENT" -> {
-                if (Statuses.PUBLISHED.name().equals(prevState) || Statuses.CANCELED.name().equals(prevState)) {
-                    throw new DataIntegrityViolationException("Event cannot be published");
+                if (Statuses.PUBLISHED.name().equals(prevState)
+                        || Statuses.CANCELED.name().equals(prevState)) {
+                    throw new ConflictException("Event cannot be published");
                 }
                 updated.setState(Statuses.PUBLISHED.name());
                 updated.setPublishedOn(LocalDateTime.now());
             }
+
             default -> updated.setState(prevState);
         }
     }
