@@ -66,13 +66,11 @@ public class EventServiceImpl implements EventService {
                                                          Integer from,
                                                          Integer size) {
 
-        int pageFrom = from == null ? 0  : from;
-        int pageSize = (size == null || size <= 0) ? 10 : size;
+        int pageFrom = from == null ? 0 : from;
+        int pageSize = size == null ? 10 : size; // Не заменяем size=0!
 
-        PageRequest page = PageRequest.of(pageFrom > 0 ? pageFrom / pageSize : 0, pageSize);
-
-        return EventMapperNew
-                .mapToResponseEventDto(eventRepository.findByInitiatorId(userId, page));
+        PageRequest page = PageRequest.of(pageFrom, pageSize); // Простая пагинация
+        return EventMapperNew.mapToResponseEventDto(eventRepository.findByInitiatorId(userId, page));
     }
 
     @Override
