@@ -13,6 +13,7 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @NoArgsConstructor
 public class EventDto {
+
     private Long id;
     private String annotation;
     private CategoryDtoWithId category;
@@ -32,4 +33,5 @@ public class EventDto {
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime publishedOn;
     private String state;
+
 }
