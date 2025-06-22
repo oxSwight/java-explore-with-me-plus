@@ -406,35 +406,6 @@ public class EventServiceImpl implements EventService {
         return EventMapperNew.mapToResponseEventDto(updatedEvent);
     }
 
-    @Transactional
-    public ResponseEventDto publishEventByAdmin(long eventId) {
-        Event event = eventRepository.findById(eventId)
-                .orElseThrow(EntityNotFoundException::new);
-
-        if (Statuses.PUBLISHED.name().equals(event.getState())
-                || Statuses.CANCELED.name().equals(event.getState())) {
-            throw new ConflictException("Event cannot be published");
-        }
-
-        event.setState(Statuses.PUBLISHED.name());
-        event.setPublishedOn(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS));
-
-        return EventMapperNew.mapToResponseEventDto(eventRepository.saveAndFlush(event));
-    }
-
-    @Transactional
-    public ResponseEventDto cancelEventByAdmin(long eventId) {
-        Event event = eventRepository.findById(eventId)
-                .orElseThrow(EntityNotFoundException::new);
-
-        if (Statuses.PUBLISHED.name().equals(event.getState())) {
-            throw new ConflictException("Published event cannot be cancelled");
-        }
-
-        event.setState(Statuses.CANCELED.name());
-        return EventMapperNew.mapToResponseEventDto(eventRepository.saveAndFlush(event));
-    }
-
     @Override
     public Collection<ResponseEventDto> findEventsByAdmin(List<Long> users,
                                                           List<String> states,
@@ -452,9 +423,6 @@ public class EventServiceImpl implements EventService {
         int pageSize = (size == null || size <= 0) ? 10 : size;
         PageRequest page = PageRequest
                 .of(pageFrom > 0 ? pageFrom / pageSize : 0, pageSize);
-
-        //LocalDateTime start = rangeStart != null ? rangeStart : LocalDateTime.MIN;
-        //LocalDateTime end   = rangeEnd   != null ? rangeEnd   : LocalDateTime.MAX;
 
         LocalDateTime start = rangeStart != null ? rangeStart : LocalDateTime.now().minusYears(1);
         LocalDateTime end = rangeEnd != null ? rangeEnd : LocalDateTime.now().plusYears(1);

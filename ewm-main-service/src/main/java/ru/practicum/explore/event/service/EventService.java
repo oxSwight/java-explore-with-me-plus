@@ -36,10 +36,6 @@ public interface EventService {
 
     ResponseEventDto changeEventByAdmin(long eventId, PatchEventDto patchEventDto);
 
-    ResponseEventDto publishEventByAdmin(long eventId);
-
-    ResponseEventDto cancelEventByAdmin(long eventId);
-
     Collection<ResponseEventDto> findEventsByAdmin(List<Long> users,
                                                    List<String> states,
                                                    List<Long> categories,
