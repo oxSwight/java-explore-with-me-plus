@@ -13,7 +13,10 @@ import ru.practicum.explore.category.repository.CategoryRepository;
 import ru.practicum.explore.common.exception.BadRequestException;
 import ru.practicum.explore.common.exception.ConflictException;
 import ru.practicum.explore.common.exception.NotFoundException;
-import ru.practicum.explore.event.dto.*;
+import ru.practicum.explore.event.dto.EventDto;
+import ru.practicum.explore.event.dto.NewEventDto;
+import ru.practicum.explore.event.dto.PatchEventDto;
+import ru.practicum.explore.event.dto.ResponseEventDto;
 import ru.practicum.explore.event.mapper.EventMapperNew;
 import ru.practicum.explore.event.model.Event;
 import ru.practicum.explore.event.model.EventState;
@@ -37,8 +40,8 @@ import java.util.stream.Collectors;
 @Transactional(readOnly = true)
 public class EventServiceImpl implements EventService {
 
-    private final UserRepository     userRepository;
-    private final EventRepository    eventRepository;
+    private final UserRepository userRepository;
+    private final EventRepository eventRepository;
     private final CategoryRepository categoryRepository;
     private final LocationRepository locationRepository;
 
@@ -176,12 +179,12 @@ public class EventServiceImpl implements EventService {
                                                          Integer from,
                                                          Integer size) {
 
-        String  qText      = text == null ? "" : text.trim();
-        boolean byText     = !qText.isBlank();
-        boolean byCats     = categories != null && !categories.isEmpty();
-        List<Long> cats    = byCats ? categories : List.of();
-        boolean isPaid     = Boolean.TRUE.equals(paid);
-        boolean onlyAvail  = Boolean.TRUE.equals(onlyAvailable);
+        String qText = text == null ? "" : text.trim();
+        boolean byText = !qText.isBlank();
+        boolean byCats = categories != null && !categories.isEmpty();
+        List<Long> cats = byCats ? categories : List.of();
+        boolean isPaid = Boolean.TRUE.equals(paid);
+        boolean onlyAvail = Boolean.TRUE.equals(onlyAvailable);
 
         /* пагинация */
         int pageFrom = from == null ? 0 : from;
@@ -189,7 +192,7 @@ public class EventServiceImpl implements EventService {
         PageRequest page = PageRequest.of(pageFrom / pageSize, pageSize);
 
         LocalDateTime start = rangeStart != null ? rangeStart : LocalDateTime.now();
-        LocalDateTime end   = rangeEnd   != null ? rangeEnd   : start.plusYears(100);
+        LocalDateTime end = rangeEnd != null ? rangeEnd : start.plusYears(100);
 
         List<ResponseEventDto> result = new ArrayList<>();
 
@@ -426,9 +429,9 @@ public class EventServiceImpl implements EventService {
                                                           Integer from,
                                                           Integer size) {
 
-        List<Long>   ids   = users      == null || users.isEmpty()      ? List.of(0L) : users;
-        List<String> st    = states     == null || states.isEmpty()     ? List.of("0") : states;
-        List<Long>   cats  = categories == null || categories.isEmpty() ? List.of(0L) : categories;
+        List<Long> ids = users == null || users.isEmpty() ? List.of(0L) : users;
+        List<String> st = states == null || states.isEmpty() ? List.of("0") : states;
+        List<Long> cats = categories == null || categories.isEmpty() ? List.of(0L) : categories;
 
         int pageFrom = from == null ? 0 : from;
         int pageSize = (size == null || size <= 0) ? 10 : size;
@@ -585,7 +588,7 @@ public class EventServiceImpl implements EventService {
                 dto.getTitle());
 
         EventDto created = createEvent(userId, patch);
-        Event   entity  = eventRepository
+        Event entity = eventRepository
                 .findById(created.getId())
                 .orElseThrow(() ->
                         new NotFoundException("Event not found after creation"));
@@ -611,27 +614,29 @@ public class EventServiceImpl implements EventService {
             return;
         }
         try {
-        switch (stateAction) {
-            case "SEND_TO_REVIEW" -> updated.setState(Statuses.PENDING.name());
+            switch (stateAction) {
+                case "SEND_TO_REVIEW" -> updated.setState(Statuses.PENDING.name());
 
-            case "CANCEL_REVIEW", "REJECT_EVENT" -> {
-                if (Statuses.PUBLISHED.name().equals(prevState)) {
-                    throw new ConflictException("Event already published");
+                case "CANCEL_REVIEW", "REJECT_EVENT" -> {
+                    if (Statuses.PUBLISHED.name().equals(prevState)) {
+                        throw new ConflictException("Cannot cancel published event");
+                    }
+                    updated.setState(Statuses.CANCELED.name());
                 }
-                updated.setState(Statuses.CANCELED.name());
-            }
 
-            case "PUBLISH_EVENT" -> {
-                if (Statuses.PUBLISHED.name().equals(prevState)
-                        || Statuses.CANCELED.name().equals(prevState)) {
-                    throw new ConflictException("Event cannot be published");
+                case "PUBLISH_EVENT" -> {
+                    if (Statuses.PUBLISHED.name().equals(prevState)) {
+                        throw new ConflictException("Event already published");
+                    }
+                    if (Statuses.CANCELED.name().equals(prevState)) {
+                        throw new ConflictException("Cannot publish canceled event");
+                    }
+                    updated.setState(Statuses.PUBLISHED.name());
+                    updated.setPublishedOn(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS));
                 }
-                updated.setState(Statuses.PUBLISHED.name());
-                updated.setPublishedOn(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS));
-            }
 
-            default -> updated.setState(prevState);
-        }
+                default -> updated.setState(prevState);
+            }
         } catch (IllegalArgumentException e) {
             throw new ConflictException("Неизвестный статус события: " + prevState);
         }
