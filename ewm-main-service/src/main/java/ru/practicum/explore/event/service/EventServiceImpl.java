@@ -610,6 +610,7 @@ public class EventServiceImpl implements EventService {
             updated.setState(prevState);
             return;
         }
+        try {
         switch (stateAction) {
             case "SEND_TO_REVIEW" -> updated.setState(Statuses.PENDING.name());
 
@@ -630,6 +631,9 @@ public class EventServiceImpl implements EventService {
             }
 
             default -> updated.setState(prevState);
+        }
+        } catch (IllegalArgumentException e) {
+            throw new ConflictException("Неизвестный статус события: " + prevState);
         }
     }
 
