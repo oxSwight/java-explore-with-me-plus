@@ -435,8 +435,15 @@ public class EventServiceImpl implements EventService {
         PageRequest page = PageRequest
                 .of(pageFrom > 0 ? pageFrom / pageSize : 0, pageSize);
 
-        LocalDateTime start = rangeStart != null ? rangeStart : LocalDateTime.MIN;
-        LocalDateTime end   = rangeEnd   != null ? rangeEnd   : LocalDateTime.MAX;
+        //LocalDateTime start = rangeStart != null ? rangeStart : LocalDateTime.MIN;
+        //LocalDateTime end   = rangeEnd   != null ? rangeEnd   : LocalDateTime.MAX;
+
+        LocalDateTime start = rangeStart != null ? rangeStart : LocalDateTime.now().minusYears(1);
+        LocalDateTime end = rangeEnd != null ? rangeEnd : LocalDateTime.now().plusYears(1);
+
+        if (start.isAfter(end)) {
+            throw new BadRequestException("Дата начала должна быть раньше даты окончания");
+        }
 
         List<ResponseEventDto> result = new ArrayList<>();
 

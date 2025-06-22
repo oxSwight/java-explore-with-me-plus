@@ -11,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
+import ru.practicum.explore.common.exception.BadRequestException;
 import ru.practicum.explore.event.dto.NewEventDto;
 import ru.practicum.explore.event.dto.PatchEventDto;
 import ru.practicum.explore.event.dto.ResponseEventDto;
@@ -106,8 +107,16 @@ public class EventController {
             @RequestParam(defaultValue = "0") @Min(0) Integer from,
             @RequestParam(defaultValue = "10") @Positive Integer size) {
 
+        // Валидация дат
+        if (rangeStart != null && rangeEnd != null && rangeStart.isAfter(rangeEnd)) {
+            throw new BadRequestException("Дата начала не может быть позже даты окончания");
+        }
+
+        // Дефолтные значения дат, если не указаны
+        LocalDateTime startDate = rangeStart != null ? rangeStart : LocalDateTime.now().minusYears(1);
+        LocalDateTime endDate = rangeEnd != null ? rangeEnd : LocalDateTime.now().plusYears(1);
         return ResponseEntity.ok(eventService.findAdminEvents(users, states, categories,
-                rangeStart, rangeEnd, from, size));
+                startDate, endDate, from, size));
     }
 
     @PatchMapping("/admin/events/{eventId}")
