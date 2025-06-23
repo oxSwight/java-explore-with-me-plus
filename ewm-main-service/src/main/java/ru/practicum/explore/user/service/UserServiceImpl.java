@@ -9,6 +9,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.practicum.explore.common.exception.ConflictException;
+import ru.practicum.explore.common.exception.ForbiddenException;
 import ru.practicum.explore.common.exception.NotFoundException;
 import ru.practicum.explore.event.model.Event;
 import ru.practicum.explore.event.repository.EventRepository;
@@ -53,18 +54,20 @@ public class UserServiceImpl implements UserService {
         return UserMapperNew.mapToUserDto(userRepository.findAllById(ids));
     }
 
+    @Override
     @Transactional
     public RequestDto cancelRequest(long userId, long requestId) {
-
-        userRepository.findById(userId).orElseThrow(EntityNotFoundException::new);
         Request request = requestRepository.findById(requestId)
-                .orElseThrow(EntityNotFoundException::new);
+                .orElseThrow(() -> new EntityNotFoundException("Request not found"));
 
-        if (request.getStatus().trim().equals(Statuses.CONFIRMED.name())) {
-            throw new ConflictException("Confirmed request cannot be cancelled");
+        // Отмена допускается только для собственных PENDING-заявок
+        if (!request.getRequesterId().equals(userId)) {
+            throw new ForbiddenException("You can cancel only your own requests");
         }
-        if (request.getStatus().trim().equals(Statuses.CANCELED.name())) {
-            throw new ConflictException("Request already cancelled");
+        if (Statuses.CONFIRMED.name().equals(request.getStatus())
+                || Statuses.REJECTED.name().equals(request.getStatus())
+                || Statuses.CANCELED.name().equals(request.getStatus())) {
+            throw new ConflictException("Request is already completed and cannot be canceled");
         }
 
         request.setStatus(Statuses.CANCELED.name());
