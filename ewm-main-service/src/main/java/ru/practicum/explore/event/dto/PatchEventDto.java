@@ -8,6 +8,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 @AllArgsConstructor
@@ -38,4 +39,8 @@ public class PatchEventDto {
 
     @Size(min = 3, max = 120)
     private String title;
+
+    private List<Long> requestIds;  // Список ID заявок для обработки
+
+    private String status;          // Новый статус для заявок (CONFIRMED/REJECTED)
 }

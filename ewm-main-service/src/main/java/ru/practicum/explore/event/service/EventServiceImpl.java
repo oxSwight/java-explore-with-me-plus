@@ -21,8 +21,10 @@ import ru.practicum.explore.event.mapper.EventMapperNew;
 import ru.practicum.explore.event.model.Event;
 import ru.practicum.explore.event.model.EventState;
 import ru.practicum.explore.event.model.Location;
+import ru.practicum.explore.event.model.ParticipationRequest;
 import ru.practicum.explore.event.repository.EventRepository;
 import ru.practicum.explore.event.repository.LocationRepository;
+import ru.practicum.explore.event.repository.ParticipationRequestRepository;
 import ru.practicum.explore.global.dto.SortValues;
 import ru.practicum.explore.global.dto.Statuses;
 import ru.practicum.explore.user.model.User;
@@ -44,6 +46,7 @@ public class EventServiceImpl implements EventService {
     private final EventRepository eventRepository;
     private final CategoryRepository categoryRepository;
     private final LocationRepository locationRepository;
+    private final ParticipationRequestRepository participationRequestRepository;
 
     private static final Map<Long, Set<String>> VIEWS_IP_CACHE = new ConcurrentHashMap<>();
 
@@ -95,9 +98,42 @@ public class EventServiceImpl implements EventService {
         Event stored = eventRepository
                 .findByIdAndInitiatorId(eventId, userId)
                 .orElseThrow(EntityNotFoundException::new);
-
+// Проверка, что событие не опубликовано
         if (Statuses.PUBLISHED.name().equals(stored.getState())) {
-            throw new ConflictException("Cannot modify published event");
+            throw new ConflictException("Нельзя изменять опубликованное событие");
+        }
+
+        // Проверка даты события
+        if (patch.getEventDate() != null) {
+            validateFutureDate(patch.getEventDate());
+        }
+
+        // Обработка заявок на участие (если есть requestIds)
+        if (patch.getRequestIds() != null && !patch.getRequestIds().isEmpty()) {
+            // Получаем все заявки по переданным ID
+            List<ParticipationRequest> requests = participationRequestRepository.findAllByIdIn(patch.getRequestIds());
+
+            // Проверяем, что все заявки принадлежат этому событию
+            requests.forEach(request -> {
+                if (!request.getEvent().getId().equals(eventId)) {
+                    throw new ConflictException("Заявка " + request.getId() + " не принадлежит событию " + eventId);
+                }
+            });
+
+            // Если пытаемся отклонить заявки
+            if ("REJECTED".equals(patch.getStatus())) {
+                // Проверяем, есть ли среди них подтверждённые
+                boolean hasConfirmed = requests.stream()
+                        .anyMatch(req -> "CONFIRMED".equals(req.getStatus()));
+
+                if (hasConfirmed) {
+                    throw new ConflictException("Нельзя отклонить уже подтверждённые заявки");
+                }
+
+                // Обновляем статус заявок
+                requests.forEach(req -> req.setStatus("REJECTED"));
+                participationRequestRepository.saveAll(requests);
+            }
         }
 
         if (patch.getEventDate() != null) {
@@ -406,6 +442,20 @@ public class EventServiceImpl implements EventService {
         return EventMapperNew.mapToResponseEventDto(updatedEvent);
     }
 
+
+    @Transactional
+    public ResponseEventDto cancelEventByAdmin(long eventId) {
+        Event event = eventRepository.findById(eventId)
+                .orElseThrow(EntityNotFoundException::new);
+
+        if (Statuses.PUBLISHED.name().equals(event.getState())) {
+            throw new ConflictException("Published event cannot be cancelled");
+        }
+
+        event.setState(Statuses.CANCELED.name());
+        return EventMapperNew.mapToResponseEventDto(eventRepository.saveAndFlush(event));
+    }
+
     @Override
     public Collection<ResponseEventDto> findEventsByAdmin(List<Long> users,
                                                           List<String> states,
@@ -568,7 +618,9 @@ public class EventServiceImpl implements EventService {
                 dto.getParticipantLimit(),
                 dto.getRequestModeration(),
                 null,
-                dto.getTitle());
+                dto.getTitle(),
+                null,  // requestIds
+                null);   // status;
 
         EventDto created = createEvent(userId, patch);
         Event entity = eventRepository
