@@ -53,18 +53,19 @@ public class UserServiceImpl implements UserService {
         return UserMapperNew.mapToUserDto(userRepository.findAllById(ids));
     }
 
+    @Override
     @Transactional
     public RequestDto cancelRequest(long userId, long requestId) {
-
-        userRepository.findById(userId).orElseThrow(EntityNotFoundException::new);
         Request request = requestRepository.findById(requestId)
-                .orElseThrow(EntityNotFoundException::new);
+                .orElseThrow(() -> new NotFoundException("Request id=" + requestId + " not found"));
 
-        if (request.getStatus().trim().equals(Statuses.CONFIRMED.name())) {
-            throw new ConflictException("Confirmed request cannot be cancelled");
+        if (!request.getRequesterId().equals(userId)) {
+            throw new ConflictException("Only requester can cancel own request");
         }
-        if (request.getStatus().trim().equals(Statuses.CANCELED.name())) {
-            throw new ConflictException("Request already cancelled");
+
+        if (!Statuses.PENDING.name().equals(request.getStatus())) {
+            throw new ConflictException(
+                    String.format("Request already %s — cannot cancel", request.getStatus()));
         }
 
         request.setStatus(Statuses.CANCELED.name());
