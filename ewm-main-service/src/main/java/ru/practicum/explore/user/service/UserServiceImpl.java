@@ -21,6 +21,7 @@ import ru.practicum.explore.user.repository.RequestRepository;
 import ru.practicum.explore.user.repository.UserRepository;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
@@ -56,13 +57,15 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public RequestDto cancelRequest(long userId, long requestId) {
-        Request request = requestRepository.findById(requestId)
-                .orElseThrow(() -> new NotFoundException("Request id=" + requestId + " not found"));
 
-        if (!request.getRequesterId().equals(userId)) {
-            throw new ConflictException("Only requester can cancel own request");
+        Request request = requestRepository.findById(requestId)
+                .orElseThrow(() -> new EntityNotFoundException("Request not found"));
+
+        if (!Objects.equals(request.getRequesterId(), userId)) {
+            throw new ConflictException("Only requester may cancel own request");
         }
 
+        // отменяем ТОЛЬКО PENDING-заявки
         if (!Statuses.PENDING.name().equals(request.getStatus())) {
             throw new ConflictException(
                     String.format("Request already %s — cannot cancel", request.getStatus()));
@@ -143,44 +146,63 @@ public class UserServiceImpl implements UserService {
                 requestRepository.findByEventId(eventId).orElse(List.of()));
     }
 
+    private ResponseInformationAboutRequests buildUpdateResult(List<Request> requests) {
+
+        List<RequestDto> confirmed = new ArrayList<>();
+        List<RequestDto> rejected  = new ArrayList<>();
+        List<RequestDto> pending   = new ArrayList<>();
+
+        for (Request r : requests) {
+            RequestDto dto = UserMapperNew.mapToRequestDto(r);
+            switch (r.getStatus()) {
+                case "CONFIRMED" -> confirmed.add(dto);
+                case "REJECTED"  -> rejected.add(dto);
+                default          -> pending.add(dto);       // PENDING / CANCELED и т.д.
+            }
+        }
+        return new ResponseInformationAboutRequests(confirmed, rejected, pending);
+    }
+
     @Override
     @Transactional
-    public ResponseInformationAboutRequests changeRequestsStatuses(long userId,
-                                                                   long eventId,
-                                                                   ChangedStatusOfRequestsDto dto) {
+    public ResponseInformationAboutRequests changeRequestsStatuses(
+            long userId, long eventId, ChangedStatusOfRequestsDto dto) {
+
         Event event = eventRepository.findByIdAndInitiatorId(eventId, userId)
-                .orElseThrow(EntityNotFoundException::new);
-        long limit = event.getParticipantLimit();
-        long confirmed = event.getConfirmedRequests();
-        Collection<Request> requests =
-                requestRepository.findByIdInAndEventId(dto.getRequestIds(), eventId);
+                .orElseThrow(() -> new EntityNotFoundException("Event not found"));
+
+        List<Request> requests =
+                (List<Request>) requestRepository.findByIdInAndEventId(dto.getRequestIds(), eventId);
+
         if (requests.isEmpty()) {
-            throw new DataIntegrityViolationException("Requests not found");
+            throw new ConflictException("No requests found for update");
         }
-        for (Request r : requests) {
-            if (!Statuses.PENDING.name().equals(r.getStatus())) {
-                continue;
-            }
-            if (Statuses.REJECTED.name().equals(dto.getStatus())) {
-                r.setStatus(Statuses.REJECTED.name());
-            } else if (Statuses.CONFIRMED.name().equals(dto.getStatus())) {
-                if (limit != 0 && confirmed >= limit) {
-                    throw new DataIntegrityViolationException("Limit reached");
-                }
-                r.setStatus(Statuses.CONFIRMED.name());
-                confirmed++;
-            }
-            requestRepository.save(r);
+
+        // 1. все должны быть PENDING
+        if (requests.stream().anyMatch(r -> !Statuses.PENDING.name().equals(r.getStatus()))) {
+            throw new ConflictException("Only pending requests may be changed");
         }
-        event.setConfirmedRequests(confirmed);
-        eventRepository.save(event);
-        ResponseInformationAboutRequests resp = new ResponseInformationAboutRequests();
-        resp.setConfirmedRequests(UserMapperNew.mapToRequestDto(
-                requestRepository.findByEventIdAndStatus(eventId, Statuses.CONFIRMED.name())));
-        resp.setRejectedRequests(UserMapperNew.mapToRequestDto(
-                requestRepository.findByEventIdAndStatus(eventId, Statuses.REJECTED.name())));
-        resp.setPendingRequests(UserMapperNew.mapToRequestDto(
-                requestRepository.findByEventIdAndStatus(eventId, Statuses.PENDING.name())));
-        return resp;
+
+        // 2. проверяем лимит, если хотим CONFIRMED
+        if (Statuses.CONFIRMED.name().equals(dto.getStatus())) {
+            long freeSlots = event.getParticipantLimit() == 0
+                    ? Long.MAX_VALUE
+                    : event.getParticipantLimit() - event.getConfirmedRequests();
+            if (freeSlots < requests.size()) {
+                throw new ConflictException("Participant limit exceeded");
+            }
+        }
+
+        // 3. применяем
+        requests.forEach(r -> r.setStatus(dto.getStatus()));
+        requestRepository.saveAll(requests);
+
+        // 4. обновляем счётчик confirm-ов, если нужно
+        if (Statuses.CONFIRMED.name().equals(dto.getStatus())) {
+            event.setConfirmedRequests(event.getConfirmedRequests() + requests.size());
+            eventRepository.save(event);
+        }
+
+        return buildUpdateResult(requests);   // ваш каскадный мап-метод
     }
 }
