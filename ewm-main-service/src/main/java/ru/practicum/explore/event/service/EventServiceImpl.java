@@ -103,6 +103,15 @@ public class EventServiceImpl implements EventService {
             throw new ConflictException("Нельзя изменять опубликованное событие");
         }
 
+        if (patch.getStatus() != null && "REJECTED".equals(patch.getStatus())) {
+            List<ParticipationRequest> confirmedRequests = participationRequestRepository
+                    .findByEventIdAndStatus(eventId, "CONFIRMED");
+
+            if (!confirmedRequests.isEmpty()) {
+                throw new ConflictException("Нельзя отклонить уже подтверждённые заявки");
+            }
+        }
+
         // Проверка даты события
         if (patch.getEventDate() != null) {
             validateFutureDate(patch.getEventDate());
