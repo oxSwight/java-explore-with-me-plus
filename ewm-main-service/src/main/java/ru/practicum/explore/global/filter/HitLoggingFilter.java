@@ -5,18 +5,21 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 import ru.practicum.explore.client.StatsClient;
 import ru.practicum.explore.dto.EndHitDto;
-import org.springframework.lang.NonNull;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Optional;
 
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class HitLoggingFilter extends OncePerRequestFilter {
 
     private final StatsClient statsClient;
@@ -26,23 +29,32 @@ public class HitLoggingFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(@NonNull HttpServletRequest req,
                                     @NonNull HttpServletResponse res,
-                                    FilterChain chain)
+                                    @NonNull FilterChain chain)
             throws ServletException, IOException {
 
-        chain.doFilter(req, res);                            // сначала ответ клиенту
+        /* сохраняем данные запроса, пока они ещё доступны */
+        boolean logThisRequest =
+                "GET".equals(req.getMethod()) &&
+                        req.getRequestURI().startsWith("/events");
 
-        if ("GET".equals(req.getMethod())
-                && req.getRequestURI().startsWith("/events")) {
+        String uri = req.getRequestURI();
+        String ip  = Optional.ofNullable(req.getHeader("X-Forwarded-For"))
+                .orElse(req.getRemoteAddr());
 
+        chain.doFilter(req, res);
+
+        if (logThisRequest) {
             EndHitDto hit = EndHitDto.builder()
                     .app("ewm-main-service")
-                    .uri(req.getRequestURI())                // /events  или  /events/{id}
-                    .ip(req.getRemoteAddr())
+                    .uri(uri)
+                    .ip(ip)
                     .timestamp(LocalDateTime.now().format(FMT))
                     .build();
-
-            statsClient.save(hit);                           // отправили POST /hit
+            try {
+                statsClient.save(hit);
+            } catch (Exception e) {
+                log.warn("Cannot send hit to stats: {}", e.getMessage());
+            }
         }
     }
 }
-
