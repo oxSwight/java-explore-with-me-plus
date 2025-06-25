@@ -10,16 +10,17 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.practicum.explore.category.model.Category;
 import ru.practicum.explore.category.repository.CategoryRepository;
+import ru.practicum.explore.client.StatsClient;
 import ru.practicum.explore.common.exception.BadRequestException;
 import ru.practicum.explore.common.exception.ConflictException;
 import ru.practicum.explore.common.exception.NotFoundException;
+import ru.practicum.explore.dto.StatDto;
 import ru.practicum.explore.event.dto.EventDto;
 import ru.practicum.explore.event.dto.NewEventDto;
 import ru.practicum.explore.event.dto.PatchEventDto;
 import ru.practicum.explore.event.dto.ResponseEventDto;
 import ru.practicum.explore.event.mapper.EventMapperNew;
 import ru.practicum.explore.event.model.Event;
-import ru.practicum.explore.event.model.EventState;
 import ru.practicum.explore.event.model.Location;
 import ru.practicum.explore.event.repository.EventRepository;
 import ru.practicum.explore.event.repository.LocationRepository;
@@ -29,9 +30,12 @@ import ru.practicum.explore.user.model.User;
 import ru.practicum.explore.user.repository.UserRepository;
 
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.List;
 import java.util.stream.Collectors;
 
 @Service
@@ -44,8 +48,7 @@ public class EventServiceImpl implements EventService {
     private final EventRepository eventRepository;
     private final CategoryRepository categoryRepository;
     private final LocationRepository locationRepository;
-
-    private static final Map<Long, Set<String>> VIEWS_IP_CACHE = new ConcurrentHashMap<>();
+    private final StatsClient statsClient;
 
     @Override
     public EventDto getEventById(long userId, long eventId) {
@@ -58,11 +61,15 @@ public class EventServiceImpl implements EventService {
     }
 
     @Override
+    @Transactional
     public EventDto getPublishedEventById(long eventId) {
-        Event event = eventRepository
-                .findByIdAndState(eventId, EventState.PUBLISHED.name())
-                .orElseThrow(() ->
-                        new NotFoundException("Published event id=" + eventId + " not found"));
+        Event event = eventRepository.findByIdAndState(eventId, Statuses.PUBLISHED.name())
+                .orElseThrow(EntityNotFoundException::new);
+
+        long views = fetchViews("/events/" + eventId, false);
+        event.setViews(views);
+        eventRepository.save(event);
+
         return EventMapperNew.mapToEventDto(event);
     }
 
@@ -70,13 +77,6 @@ public class EventServiceImpl implements EventService {
     public Collection<ResponseEventDto> getAllUserEvents(long userId,
                                                          Integer from,
                                                          Integer size) {
-
-        //int pageFrom = from == null ? 0 : from;
-        //int pageSize = size == null ? 10 : size; // Не заменяем size=0!
-        //int pageSize = (size == null || size <= 0) ? 10 : size;
-        //PageRequest page = PageRequest.of(pageFrom > 0 ? pageFrom / pageSize : 0, pageSize);
-        //PageRequest page = PageRequest.of(pageFrom, pageSize); // Простая пагинация
-        //return EventMapperNew.mapToResponseEventDto(eventRepository.findByInitiatorId(userId, page));
         PageRequest pageRequest = createPageRequest(from, size);
         Page<Event> eventsPage = eventRepository.findByInitiatorId(userId, pageRequest);
 
@@ -186,7 +186,6 @@ public class EventServiceImpl implements EventService {
         boolean isPaid = Boolean.TRUE.equals(paid);
         boolean onlyAvail = Boolean.TRUE.equals(onlyAvailable);
 
-        /* пагинация */
         int pageFrom = from == null ? 0 : from;
         int pageSize = (size == null || size <= 0) ? 10 : size;
         PageRequest page = PageRequest.of(pageFrom / pageSize, pageSize);
@@ -198,7 +197,6 @@ public class EventServiceImpl implements EventService {
 
         if (byText) {
             if (!cats.isEmpty()) {
-                /* text + categories */
                 if (onlyAvail) {
                     if (isPaid) {
                         result.addAll(EventMapperNew.mapToResponseEventDto(
@@ -233,7 +231,7 @@ public class EventServiceImpl implements EventService {
                     }
                 }
 
-            } else { /* text без категорий */
+            } else {
                 if (onlyAvail) {
                     if (isPaid) {
                         result.addAll(EventMapperNew.mapToResponseEventDto(
@@ -271,7 +269,7 @@ public class EventServiceImpl implements EventService {
 
         } else {
 
-            if (!cats.isEmpty()) {   /* категории без текста */
+            if (!cats.isEmpty()) {
                 if (onlyAvail) {
                     if (isPaid) {
                         result.addAll(EventMapperNew.mapToResponseEventDto(
@@ -306,7 +304,7 @@ public class EventServiceImpl implements EventService {
                     }
                 }
 
-            } else { /* ни текста, ни категорий */
+            } else {
                 if (onlyAvail) {
                     if (isPaid) {
                         result.addAll(EventMapperNew.mapToResponseEventDto(
@@ -343,8 +341,11 @@ public class EventServiceImpl implements EventService {
             }
         }
 
-        /* ---------- сортировка ---------- */
-        if (sort != null && SortValues.VIEWS.name().equals(sort)) {
+        for (ResponseEventDto dto : result) {
+            dto.setViews(fetchViews("/events/" + dto.getId(), false));
+        }
+
+        if (SortValues.VIEWS.name().equals(sort)) {
             result.sort(Comparator.comparing(ResponseEventDto::getViews).reversed());
         } else {
             result.sort(Comparator.comparing(ResponseEventDto::getEventDate).reversed());
@@ -358,27 +359,23 @@ public class EventServiceImpl implements EventService {
         Event stored = eventRepository.findById(eventId)
                 .orElseThrow(() -> new NotFoundException("Event not found"));
 
-        // Валидация даты события
         if (patch.getEventDate() != null) {
             validateFutureDate(patch.getEventDate());
             stored.setEventDate(patch.getEventDate());
         }
 
-        // Обновление категории
         if (patch.getCategory() != null) {
             Category category = categoryRepository.findById(patch.getCategory())
                     .orElseThrow(() -> new NotFoundException("Category not found"));
             stored.setCategory(category);
         }
 
-        // Обновление локации
         if (patch.getLocation() != null) {
             Location location = locationRepository.save(
                     EventMapperNew.mapToLocation(patch.getLocation()));
             stored.setLocation(location);
         }
 
-        // Применение изменений из DTO в сущность (ваш текущий подход)
         if (patch.getAnnotation() != null) {
             stored.setAnnotation(patch.getAnnotation());
         }
@@ -398,10 +395,8 @@ public class EventServiceImpl implements EventService {
             stored.setTitle(patch.getTitle());
         }
 
-        // Обработка изменения состояния
         applyStateAction(patch.getStateAction(), stored.getState(), stored);
 
-        // Сохранение и возврат результата
         Event updatedEvent = eventRepository.save(stored);
         return EventMapperNew.mapToResponseEventDto(updatedEvent);
     }
@@ -433,7 +428,6 @@ public class EventServiceImpl implements EventService {
 
         List<ResponseEventDto> result = new ArrayList<>();
 
-        /* логика выборки без изменений, только start/end вместо raw-параметров */
         if (!ids.equals(List.of(0L))) {
             if (!st.equals(List.of("0"))) {
                 if (!cats.equals(List.of(0L))) {
@@ -528,16 +522,12 @@ public class EventServiceImpl implements EventService {
     public ResponseEventDto getPublicEvent(long eventId, HttpServletRequest request) {
         Event event = eventRepository
                 .findByIdAndState(eventId, Statuses.PUBLISHED.name())
-                .orElseThrow(() ->
-                        new NotFoundException("Published event id=" + eventId + " not found"));
+                .orElseThrow(() -> new NotFoundException("Published event not found"));
 
-        String ip = request.getRemoteAddr();
-        VIEWS_IP_CACHE.computeIfAbsent(eventId, k -> ConcurrentHashMap.newKeySet());
+        long views = fetchViews("/events/" + eventId, false);
+        event.setViews(views);
+        eventRepository.save(event);
 
-        if (VIEWS_IP_CACHE.get(eventId).add(ip)) {
-            event.setViews(event.getViews() + 1);
-            eventRepository.saveAndFlush(event);
-        }
         return EventMapperNew.mapToResponseEventDto(event);
     }
 
@@ -593,39 +583,28 @@ public class EventServiceImpl implements EventService {
 
     private void applyStateAction(String stateAction, String prevState, Event updated) {
         if (stateAction == null) {
-            return; // Состояние не меняем
+            return;
         }
 
-        try {
-            switch (stateAction) {
-                case "PUBLISH_EVENT":
-                    if (Statuses.PUBLISHED.name().equals(prevState)) {
-                        throw new ConflictException("Event already published");
-                    }
-                    if (Statuses.CANCELED.name().equals(prevState)) {
-                        throw new ConflictException("Cannot publish canceled event");
-                    }
-                    updated.setState(Statuses.PUBLISHED.name());
-                    updated.setPublishedOn(LocalDateTime.now());
-                    break;
-
-                case "CANCEL_REVIEW":
-                case "REJECT_EVENT":
-                    if (Statuses.PUBLISHED.name().equals(prevState)) {
-                        throw new ConflictException("Cannot cancel published event");
-                    }
-                    updated.setState(Statuses.CANCELED.name());
-                    break;
-
-                case "SEND_TO_REVIEW":
-                    updated.setState(Statuses.PENDING.name());
-                    break;
-
-                default:
-                    log.warn("Unknown state action: {}", stateAction);
+        switch (stateAction) {
+            case "PUBLISH_EVENT" -> {
+                if (Statuses.PUBLISHED.name().equals(prevState)) {
+                    throw new ConflictException("Event already published");
+                }
+                if (Statuses.CANCELED.name().equals(prevState)) {
+                    throw new ConflictException("Cannot publish canceled event");
+                }
+                updated.setState(Statuses.PUBLISHED.name());
+                updated.setPublishedOn(LocalDateTime.now());
             }
-        } catch (IllegalArgumentException e) {
-            throw new ConflictException("Invalid event state: " + prevState);
+            case "CANCEL_REVIEW", "REJECT_EVENT" -> {
+                if (Statuses.PUBLISHED.name().equals(prevState)) {
+                    throw new ConflictException("Cannot cancel published event");
+                }
+                updated.setState(Statuses.CANCELED.name());
+            }
+            case "SEND_TO_REVIEW" -> updated.setState(Statuses.PENDING.name());
+            default -> log.warn("Unknown state action: {}", stateAction);
         }
     }
 
@@ -633,5 +612,15 @@ public class EventServiceImpl implements EventService {
         int pageNumber = from == null ? 0 : Math.max(from, 0);
         int pageSize = size == null ? 10 : Math.max(size, 0);
         return PageRequest.of(pageNumber, pageSize);
+    }
+
+    private long fetchViews(String uri, boolean unique) {
+        String now = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        String start = "2000-01-01 00:00:00";
+        return statsClient.getStats(start, now, List.of(uri), unique)
+                .stream()
+                .findFirst()
+                .map(StatDto::getHits)
+                .orElse(0L);
     }
 }
