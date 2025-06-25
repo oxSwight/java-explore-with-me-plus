@@ -32,10 +32,8 @@ import ru.practicum.explore.user.repository.UserRepository;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Comparator;
-import java.util.List;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 @Service
@@ -49,6 +47,7 @@ public class EventServiceImpl implements EventService {
     private final CategoryRepository categoryRepository;
     private final LocationRepository locationRepository;
     private final StatsClient statsClient;
+    private static final Map<Long, Set<String>> VIEWS_IP_CACHE = new ConcurrentHashMap<>();
 
     @Override
     public EventDto getEventById(long userId, long eventId) {
@@ -520,13 +519,20 @@ public class EventServiceImpl implements EventService {
     @Override
     @Transactional
     public ResponseEventDto getPublicEvent(long eventId, HttpServletRequest request) {
+
         Event event = eventRepository
                 .findByIdAndState(eventId, Statuses.PUBLISHED.name())
                 .orElseThrow(() -> new NotFoundException("Published event not found"));
 
-        long views = fetchViews("/events/" + eventId, false);
-        event.setViews(views);
-        eventRepository.save(event);
+        String ip = Optional.ofNullable(request.getHeader("X-Forwarded-For"))
+                .orElse(request.getRemoteAddr());
+
+        VIEWS_IP_CACHE.computeIfAbsent(eventId, k -> ConcurrentHashMap.newKeySet());
+
+        if (VIEWS_IP_CACHE.get(eventId).add(ip)) {
+            event.setViews(event.getViews() + 1);
+            eventRepository.saveAndFlush(event);
+        }
 
         return EventMapperNew.mapToResponseEventDto(event);
     }
