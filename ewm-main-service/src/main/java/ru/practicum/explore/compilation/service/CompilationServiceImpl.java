@@ -33,25 +33,16 @@ public class CompilationServiceImpl implements CompilationService {
     private final EventRepository             eventRepository;
 
     @Override
-    public Collection<CompilationDto> getCompilations(Boolean pinned,
-                                                      Integer from,
-                                                      Integer size) {
+    public Collection<CompilationDto> getCompilations(Boolean pinned, Integer from, Integer size) {
+        PageRequest page = PageRequest.of(from > 0 ? from / size : 0, size);
 
-        int pageFrom = from == null ? 0  : from;
-        int pageSize = size == null ? 10 : size;
+        Collection<Compilation> comps = pinned != null
+                ? compilationRepository.findByPinned(pinned, page)
+                : compilationRepository.findAll(page).getContent();
 
-        PageRequest page = PageRequest.of(pageFrom > 0 ? pageFrom / pageSize : 0,
-                pageSize);
-
-        Collection<Compilation> comps;
-        if (pinned != null) {
-            comps = compilationRepository.findByPinned(pinned, page);
-        } else {
-            Page<Compilation> p = compilationRepository.findAll(page);
-            comps = p.hasContent() ? p.getContent() : Collections.emptyList();
-        }
         return CompilationMapperNew.mapToCompilationDto(comps);
     }
+
 
     @Override
     public CompilationDto getCompilation(long compId) {
