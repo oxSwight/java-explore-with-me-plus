@@ -10,7 +10,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @NoArgsConstructor
 public class CategoryDto {
-    @NotBlank                          // «не null, не пусто, не пробелы»
+    @NotBlank
     @Size(max = 50)                    // ограничение из ТЗ
     private String name;
 }
