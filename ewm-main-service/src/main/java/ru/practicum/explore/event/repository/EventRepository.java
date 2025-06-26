@@ -1,9 +1,8 @@
 package ru.practicum.explore.event.repository;
 
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import ru.practicum.explore.event.model.Event;
 
@@ -13,114 +12,59 @@ import java.util.Optional;
 
 @Repository
 public interface EventRepository extends JpaRepository<Event, Long> {
-
     Optional<Event> findByIdAndInitiatorId(long eventId, long userId);
 
     Optional<Event> findByCategoryId(long catId);
 
-    @Query("SELECT e FROM Event e WHERE e.initiator.id = :userId")
-    List<Event> findUserEvents(@Param("userId") long userId, Pageable pageable);
+    Page<Event> findByInitiatorId(long userId, Pageable pageable);
 
-    @Query("SELECT e FROM Event e WHERE e.id = :eventId AND e.state = :state")
-    Optional<Event> findEventByIdAndState(@Param("eventId") long eventId, @Param("state") String state);
+    Optional<Event> findByIdAndState(long eventId, String state);
 
-    @Query("""
-        SELECT e FROM Event e
-        WHERE e.paid = :paid
-          AND e.eventDate BETWEEN :start AND :end
-          AND e.participantLimit IS NOT NULL
-          AND e.state = :state
-          AND (LOWER(e.annotation) LIKE LOWER(CONCAT('%', :text, '%'))
-               OR LOWER(e.description) LIKE LOWER(CONCAT('%', :text, '%')))
-          AND e.category.id IN :categories
-        """)
-    List<Event> searchAvailablePaidEventsByTextAndCategory(@Param("paid") boolean paid,
-                                                           @Param("start") LocalDateTime start,
-                                                           @Param("end") LocalDateTime end,
-                                                           @Param("state") String state,
-                                                           @Param("text") String text,
-                                                           @Param("categories") List<Long> categories,
-                                                           Pageable pageable);
+    List<Event> findByPaidAndEventDateGreaterThanEqualAndEventDateLessThanEqualAndParticipantLimitNotNullAndStateAndAnnotationIgnoreCaseOrDescriptionIgnoreCaseAndCategoryIdIn(boolean paid, LocalDateTime start, LocalDateTime end, String state1, String text1, String text2, List<Long> catId, Pageable pageable);
 
-    @Query("""
-        SELECT e FROM Event e
-        WHERE e.initiator.id IN :users
-          AND e.state IN :states
-          AND e.category.id IN :categories
-          AND e.eventDate BETWEEN :start AND :end
-        """)
-    List<Event> findEventsByUsersStatesCategories(@Param("users") List<Long> users,
-                                                  @Param("states") List<String> states,
-                                                  @Param("categories") List<Long> categories,
-                                                  @Param("start") LocalDateTime start,
-                                                  @Param("end") LocalDateTime end,
-                                                  Pageable pageable);
+    List<Event> findByPaidAndEventDateGreaterThanEqualAndEventDateLessThanEqualAndStateAndAnnotationIgnoreCaseOrDescriptionIgnoreCaseAndCategoryIdIn(boolean paid, LocalDateTime start, LocalDateTime end, String state1, String text1, String text2, List<Long> catId, Pageable pageable);
 
-    @Query("""
-        SELECT e FROM Event e
-        WHERE e.eventDate BETWEEN :start AND :end
-        """)
-    List<Event> findAllByDateRange(@Param("start") LocalDateTime start,
-                                   @Param("end") LocalDateTime end,
-                                   Pageable pageable);
+    List<Event> findByPaidAndEventDateGreaterThanEqualAndEventDateLessThanEqualAndParticipantLimitNotNullAndStateAndAnnotationIgnoreCaseOrDescriptionIgnoreCase(boolean paid, LocalDateTime start, LocalDateTime end, String state1, String text1, String text2, Pageable pageable);
 
-    @Query("""
-        SELECT e FROM Event e
-        WHERE e.paid = :paid
-          AND e.eventDate BETWEEN :start AND :end
-          AND e.state = :state
-          AND (LOWER(e.annotation) LIKE LOWER(CONCAT('%', :text, '%'))
-               OR LOWER(e.description) LIKE LOWER(CONCAT('%', :text, '%')))
-        """)
-    List<Event> searchPaidEventsWithText(@Param("paid") boolean paid,
-                                         @Param("start") LocalDateTime start,
-                                         @Param("end") LocalDateTime end,
-                                         @Param("state") String state,
-                                         @Param("text") String text,
-                                         Pageable pageable);
+    List<Event> findByPaidAndEventDateGreaterThanEqualAndEventDateLessThanEqualAndStateAndAnnotationIgnoreCaseOrDescriptionIgnoreCase(boolean paid, LocalDateTime start, LocalDateTime end, String state1, String text1, String text2, Pageable pageable);
 
-    @Query("""
-        SELECT e FROM Event e
-        WHERE e.eventDate BETWEEN :start AND :end
-          AND e.state = :state
-          AND (LOWER(e.annotation) LIKE LOWER(CONCAT('%', :text, '%'))
-               OR LOWER(e.description) LIKE LOWER(CONCAT('%', :text, '%')))
-          AND e.category.id IN :categories
-        """)
-    List<Event> searchEventsByTextAndCategory(@Param("start") LocalDateTime start,
-                                              @Param("end") LocalDateTime end,
-                                              @Param("state") String state,
-                                              @Param("text") String text,
-                                              @Param("categories") List<Long> categories,
-                                              Pageable pageable);
+    List<Event> findByPaidAndEventDateGreaterThanEqualAndEventDateLessThanEqualAndParticipantLimitNotNullAndStateAndCategoryIdIn(boolean paid, LocalDateTime start, LocalDateTime end, String state1, List<Long> catId, Pageable pageable);
 
-    @Query("""
-        SELECT e FROM Event e
-        WHERE e.initiator.id IN :users
-          AND e.eventDate BETWEEN :start AND :end
-        """)
-    List<Event> findEventsByUsers(@Param("users") List<Long> users,
-                                  @Param("start") LocalDateTime start,
-                                  @Param("end") LocalDateTime end,
-                                  Pageable pageable);
+    List<Event> findByPaidAndEventDateGreaterThanEqualAndEventDateLessThanEqualAndStateAndCategoryIdIn(boolean paid, LocalDateTime start, LocalDateTime end, String state1, List<Long> catId, Pageable pageable);
 
-    @Query("""
-        SELECT e FROM Event e
-        WHERE e.state IN :states
-          AND e.eventDate BETWEEN :start AND :end
-        """)
-    List<Event> findEventsByStates(@Param("states") List<String> states,
-                                   @Param("start") LocalDateTime start,
-                                   @Param("end") LocalDateTime end,
-                                   Pageable pageable);
+    List<Event> findByPaidAndEventDateGreaterThanEqualAndEventDateLessThanEqualAndParticipantLimitNotNullAndState(boolean paid, LocalDateTime start, LocalDateTime end, String state1, Pageable pageable);
 
-    @Query("""
-        SELECT e FROM Event e
-        WHERE e.category.id IN :categories
-          AND e.eventDate BETWEEN :start AND :end
-        """)
-    List<Event> findEventsByCategory(@Param("categories") List<Long> categories,
-                                     @Param("start") LocalDateTime start,
-                                     @Param("end") LocalDateTime end,
-                                     Pageable pageable);
+    List<Event> findByPaidAndEventDateGreaterThanEqualAndEventDateLessThanEqualAndState(boolean paid, LocalDateTime start, LocalDateTime end, String state1, Pageable pageable);
+
+    List<Event> findByEventDateGreaterThanEqualAndEventDateLessThanEqualAndParticipantLimitNotNullAndStateAndAnnotationIgnoreCaseOrDescriptionIgnoreCaseAndCategoryIdIn(LocalDateTime start, LocalDateTime end, String state1, String text1, String text2, List<Long> catId, Pageable pageable);
+
+    List<Event> findByEventDateGreaterThanEqualAndEventDateLessThanEqualAndStateAndAnnotationIgnoreCaseOrDescriptionIgnoreCaseAndCategoryIdIn(LocalDateTime start, LocalDateTime end, String state1, String text1, String text2, List<Long> catId, Pageable pageable);
+
+    List<Event> findByEventDateGreaterThanEqualAndEventDateLessThanEqualAndParticipantLimitNotNullAndStateAndAnnotationIgnoreCaseOrDescriptionIgnoreCase(LocalDateTime start, LocalDateTime end, String state1, String text1, String text2, Pageable pageable);
+
+    List<Event> findByEventDateGreaterThanEqualAndEventDateLessThanEqualAndStateAndAnnotationIgnoreCaseOrDescriptionIgnoreCase(LocalDateTime start, LocalDateTime end, String state1, String text1, String text2, Pageable pageable);
+
+    List<Event> findByEventDateGreaterThanEqualAndEventDateLessThanEqualAndParticipantLimitNotNullAndStateAndCategoryIdIn(LocalDateTime start, LocalDateTime end, String state1, List<Long> catId, Pageable pageable);
+
+    List<Event> findByEventDateGreaterThanEqualAndEventDateLessThanEqualAndStateAndCategoryIdIn(LocalDateTime start, LocalDateTime end, String state1, List<Long> catId, Pageable pageable);
+
+    List<Event> findByEventDateGreaterThanEqualAndEventDateLessThanEqualAndParticipantLimitNotNullAndState(LocalDateTime start, LocalDateTime end, String state1, Pageable pageable);
+
+    List<Event> findByEventDateGreaterThanEqualAndEventDateLessThanEqualAndState(LocalDateTime start, LocalDateTime end, String state1, Pageable pageable);
+
+    List<Event> findByInitiatorIdInAndStateInAndCategoryIdInAndEventDateGreaterThanEqualAndEventDateLessThanEqual(List<Long> users, List<String> states, List<Long> categories, LocalDateTime start, LocalDateTime end, Pageable pageable);
+
+    List<Event> findByInitiatorIdInAndStateInAndEventDateGreaterThanEqualAndEventDateLessThanEqual(List<Long> users, List<String> states, LocalDateTime start, LocalDateTime end, Pageable pageable);
+
+    List<Event> findByInitiatorIdInAndCategoryIdInAndEventDateGreaterThanEqualAndEventDateLessThanEqual(List<Long> users, List<Long> categories, LocalDateTime start, LocalDateTime end, Pageable pageable);
+
+    List<Event> findByInitiatorIdInAndEventDateGreaterThanEqualAndEventDateLessThanEqual(List<Long> users, LocalDateTime start, LocalDateTime end, Pageable pageable);
+
+    List<Event> findByStateInAndCategoryIdInAndEventDateGreaterThanEqualAndEventDateLessThanEqual(List<String> states, List<Long> categories, LocalDateTime start, LocalDateTime end, Pageable pageable);
+
+    List<Event> findByStateInAndEventDateGreaterThanEqualAndEventDateLessThanEqual(List<String> states, LocalDateTime start, LocalDateTime end, Pageable pageable);
+
+    List<Event> findByCategoryIdInAndEventDateGreaterThanEqualAndEventDateLessThanEqual(List<Long> categories, LocalDateTime start, LocalDateTime end, Pageable pageable);
+
+    List<Event> findByEventDateGreaterThanEqualAndEventDateLessThanEqual(LocalDateTime start, LocalDateTime end, Pageable pageable);
 }
