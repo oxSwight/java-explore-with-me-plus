@@ -2,8 +2,7 @@ package ru.practicum.explore.client;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
@@ -16,30 +15,37 @@ import java.util.List;
 import java.util.Map;
 
 public class StatsClient extends RestServiceClient {
-    @Autowired
-    public StatsClient(@Value("${stats-service.url}") String serverUrl, RestTemplateBuilder builder) {
-        super(builder.uriTemplateHandler(new DefaultUriBuilderFactory(serverUrl))
-                .requestFactory(() -> new HttpComponentsClientHttpRequestFactory()).build());
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    public StatsClient(String serverUrl, RestTemplateBuilder builder) {
+        super(builder
+                .uriTemplateHandler(new DefaultUriBuilderFactory(serverUrl))
+                .requestFactory(() -> new HttpComponentsClientHttpRequestFactory(
+                        HttpClients.createDefault()))
+                .build());
     }
 
-    public List<StatDto> getStats(String start, String end, List<String> uris, Boolean unique) {
-        String urisParam = String.join(",", uris);
-        Map<String, Object> parameters = Map.of(
+    public ResponseEntity<Object> save(EndHitDto hit) {
+        return submit("/hit", hit);
+    }
+
+    public List<StatDto> getStats(String start, String end,
+                                  List<String> uris, boolean unique) {
+
+        Map<String, Object> params = Map.of(
                 "start", start,
                 "end", end,
-                "uris", urisParam,
+                "uris", String.join(",", uris),
                 "unique", unique
         );
-        ResponseEntity<Object> response = fetch("/stats?start={start}&end={end}&uris={uris}&unique={unique}", parameters);
-        if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-            ObjectMapper mapper = new ObjectMapper();
-            return mapper.convertValue(response.getBody(),
-                    new TypeReference<List<StatDto>>() {});
+
+        ResponseEntity<Object> resp = fetch(
+                "/stats?start={start}&end={end}&uris={uris}&unique={unique}", params);
+
+        if (resp.getStatusCode().is2xxSuccessful() && resp.getBody() != null) {
+            return MAPPER.convertValue(resp.getBody(), new TypeReference<>() {});
         }
         return Collections.emptyList();
-    }
-
-    public ResponseEntity<Object> save(EndHitDto endpointHit) {
-        return submit("/hit", endpointHit);
     }
 }
